@@ -422,7 +422,7 @@
         <h1>Image Localizator</h1>
         <p>
             Carica un'immagine, allinea punti corrispondenti fra foto e mappa satellitare 3D e calcola una posa approssimata della fotocamera.
-            Ricorda di sostituire <code>YOUR_API_KEY</code> con la tua Google Maps JavaScript API key.
+            Configura un file <code>.env</code> con <code>GOOGLE_MAPS_API_KEY=</code> per abilitare il caricamento della mappa.
         </p>
     </header>
 
@@ -548,6 +548,10 @@
                     tilt: 60,
                     heading: 0,
                     elevationService: null
+                },
+                config: {
+                    envLoaded: false,
+                    mapsKey: null
                 }
             };
 
@@ -862,6 +866,84 @@
                     ? 'rgba(244, 63, 94, 0.4)'
                     : 'rgba(56, 189, 248, 0.4)';
                 dom.statusMessage.textContent = message;
+            }
+
+            async function loadMapsApiFromEnv() {
+                if (state.config.mapsKey) {
+                    ensureGoogleMapsScript(state.config.mapsKey);
+                    return;
+                }
+                try {
+                    const envContent = await readEnvFile();
+                    const env = parseEnv(envContent);
+                    const apiKeyRaw = env.GOOGLE_MAPS_API_KEY || env.GOOGLE_MAPS_KEY || '';
+                    const apiKey = apiKeyRaw.trim();
+                    if (!apiKey) {
+                        pushStatus('Chiave Google Maps non trovata nel file .env. Copia .env.example e inserisci la tua API key.', true);
+                        return;
+                    }
+                    state.config.mapsKey = apiKey;
+                    state.config.envLoaded = true;
+                    ensureGoogleMapsScript(apiKey);
+                } catch (error) {
+                    console.error(error);
+                    pushStatus('Non riesco a leggere il file .env. Assicurati che esista e che contenga GOOGLE_MAPS_API_KEY.', true);
+                }
+            }
+
+            async function readEnvFile() {
+                const response = await fetch('.env', { cache: 'no-store' });
+                if (!response.ok) {
+                    throw new Error(`Impossibile caricare .env (HTTP ${response.status})`);
+                }
+                return response.text();
+            }
+
+            function parseEnv(content) {
+                const result = {};
+                if (!content) {
+                    return result;
+                }
+                content.split(/\r?\n/).forEach((line) => {
+                    const trimmed = line.trim();
+                    if (!trimmed || trimmed.startsWith('#')) {
+                        return;
+                    }
+                    const separatorIndex = trimmed.indexOf('=');
+                    if (separatorIndex === -1) {
+                        return;
+                    }
+                    const key = trimmed.slice(0, separatorIndex).trim();
+                    const value = trimmed.slice(separatorIndex + 1).trim();
+                    if (key) {
+                        result[key] = value;
+                    }
+                });
+                return result;
+            }
+
+            function ensureGoogleMapsScript(apiKey) {
+                if (!apiKey) {
+                    return;
+                }
+                const existing = document.querySelector('script[data-google-maps="true"]');
+                if (existing) {
+                    if (existing.dataset.key === apiKey) {
+                        return;
+                    }
+                    existing.remove();
+                }
+                const encodedKey = encodeURIComponent(apiKey);
+                const script = document.createElement('script');
+                script.src = `https://maps.googleapis.com/maps/api/js?key=${encodedKey}&libraries=geometry&v=beta&callback=initMap`;
+                script.async = true;
+                script.defer = true;
+                script.dataset.googleMaps = 'true';
+                script.dataset.key = apiKey;
+                script.addEventListener('error', () => {
+                    pushStatus('Errore nel caricamento di Google Maps. Verifica la tua API key nel file .env.', true);
+                });
+                document.body.appendChild(script);
             }
 
             function initMap() {
@@ -1299,7 +1381,10 @@
                 return Math.min(Math.max(value, min), max);
             }
 
-            document.addEventListener('DOMContentLoaded', init);
+            document.addEventListener('DOMContentLoaded', () => {
+                init();
+                loadMapsApiFromEnv();
+            });
 
             return {
                 initMap,
@@ -1309,6 +1394,5 @@
 
         window.initMap = () => ImageLocalizatorApp.initMap();
     </script>
-    <script async defer src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&libraries=geometry&v=beta&callback=initMap"></script>
 </body>
 </html>
