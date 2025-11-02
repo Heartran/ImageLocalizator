@@ -174,6 +174,54 @@
             height: 100%;
         }
 
+        .map-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.92);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+            text-align: center;
+            color: var(--text);
+            z-index: 2;
+        }
+
+        .map-overlay.visible {
+            display: flex;
+        }
+
+        .map-overlay .overlay-card {
+            max-width: 28rem;
+            background: rgba(30, 41, 59, 0.9);
+            border: 1px solid rgba(59, 130, 246, 0.35);
+            border-radius: 0.85rem;
+            padding: 1.25rem;
+            display: grid;
+            gap: 0.8rem;
+        }
+
+        .map-overlay .overlay-card h3 {
+            margin: 0;
+            font-size: 1rem;
+            color: var(--accent);
+        }
+
+        .map-overlay .overlay-card p {
+            margin: 0;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+
+        .map-overlay .overlay-card code {
+            background: rgba(148, 163, 184, 0.15);
+            border: 1px solid rgba(148, 163, 184, 0.3);
+            border-radius: 0.3rem;
+            padding: 0 0.35rem;
+            color: var(--text);
+        }
+
         .legend {
             display: flex;
             gap: 1rem;
@@ -463,6 +511,16 @@
                 <h2>Mappa satellitare <span>(3D)</span></h2>
                 <div class="map-container" id="mapContainer">
                     <div id="map"></div>
+                    <div class="map-overlay" id="mapOverlay">
+                        <div class="overlay-card">
+                            <h3>Mappa 3D non disponibile</h3>
+                            <p>
+                                Per utilizzare la vista 3D è necessario configurare nel file <code>.env</code>
+                                sia <code>GOOGLE_MAPS_API_KEY</code> che <code>GOOGLE_MAPS_MAP_ID</code>.
+                                Il Map ID deve fare riferimento ad una Vector Map attivata nelle API di Google Cloud.
+                            </p>
+                        </div>
+                    </div>
                 </div>
                 <div class="notice">
                     Dopo aver cliccato sulla foto, posiziona qui il punto corrispondente. I marker sono trascinabili; puoi aggiornare manualmente l'altitudine in tabella.
@@ -584,6 +642,7 @@
                 dom.headingLeft = document.getElementById('headingLeft');
                 dom.headingRight = document.getElementById('headingRight');
                 dom.resetView = document.getElementById('resetView');
+                dom.mapOverlay = document.getElementById('mapOverlay');
             }
 
             function init() {
@@ -869,6 +928,33 @@
                 dom.statusMessage.textContent = message;
             }
 
+            function showMapOverlay(message) {
+                if (!dom.mapOverlay) {
+                    try {
+                        cacheDom();
+                    } catch (error) {
+                        return;
+                    }
+                }
+                if (!dom.mapOverlay) {
+                    return;
+                }
+                if (message) {
+                    const paragraph = dom.mapOverlay.querySelector('.overlay-card p');
+                    if (paragraph) {
+                        paragraph.innerHTML = message;
+                    }
+                }
+                dom.mapOverlay.classList.add('visible');
+            }
+
+            function hideMapOverlay() {
+                if (!dom.mapOverlay) {
+                    return;
+                }
+                dom.mapOverlay.classList.remove('visible');
+            }
+
             async function loadMapsApiFromEnv() {
                 if (state.config.mapsKey) {
                     ensureGoogleMapsScript(state.config.mapsKey);
@@ -888,11 +974,17 @@
                     if (mapId) {
                         state.config.mapId = mapId;
                     }
+                    if (!state.config.mapId) {
+                        showMapOverlay('Per utilizzare la vista 3D è necessario impostare <code>GOOGLE_MAPS_MAP_ID</code> in <code>.env</code>. Crea un Map ID vettoriale nella Google Cloud Console (Map Management).');
+                        pushStatus('Configura GOOGLE_MAPS_MAP_ID in .env per abilitare la mappa 3D.', true);
+                        return;
+                    }
                     state.config.envLoaded = true;
                     ensureGoogleMapsScript(apiKey);
                 } catch (error) {
                     console.error(error);
                     pushStatus('Non riesco a leggere il file .env. Assicurati che esista e che contenga GOOGLE_MAPS_API_KEY.', true);
+                    showMapOverlay('Non riesco a leggere il file <code>.env</code>. Assicurati che sia raggiungibile dal server locale e contenga <code>GOOGLE_MAPS_API_KEY</code> e <code>GOOGLE_MAPS_MAP_ID</code>.');
                 }
             }
 
@@ -947,6 +1039,7 @@
                 script.dataset.key = apiKey;
                 script.addEventListener('error', () => {
                     pushStatus('Errore nel caricamento di Google Maps. Verifica la tua API key nel file .env.', true);
+                    showMapOverlay('Errore nel caricamento della libreria Google Maps. Controlla che <code>GOOGLE_MAPS_API_KEY</code> e <code>GOOGLE_MAPS_MAP_ID</code> siano corretti e che il server sia avviato tramite <code>python -m http.server</code>.');
                 });
                 document.body.appendChild(script);
             }
@@ -970,6 +1063,7 @@
                 }
                 state.map.instance = new google.maps.Map(document.getElementById('map'), mapOptions);
                 state.map.elevationService = new google.maps.ElevationService();
+                hideMapOverlay();
 
                 state.map.instance.addListener('click', (event) => {
                     if (!event.latLng) {
@@ -978,11 +1072,7 @@
                     handleMapClick(event.latLng);
                 });
 
-                if (!state.config.mapId) {
-                    pushStatus('Mappa pronta (2D). Per la visualizzazione 3D imposta GOOGLE_MAPS_MAP_ID nel file .env con un map ID vettoriale.', false);
-                } else {
-                    pushStatus('Mappa pronta. Clicca su un punto della foto e poi sulla mappa per completare la corrispondenza.', false);
-                }
+                pushStatus('Mappa 3D pronta. Clicca su un punto della foto e poi sulla mappa per completare la corrispondenza.', false);
             }
 
             function handleMapClick(latLng) {
