@@ -843,6 +843,18 @@
             }
 
             function pushStatus(message, isError = false) {
+                if (!dom.statusBanner || !dom.statusMessage) {
+                    try {
+                        cacheDom();
+                    } catch (error) {
+                        console.warn('UI non ancora pronto per aggiornare lo stato:', message);
+                        return;
+                    }
+                }
+                if (!dom.statusBanner || !dom.statusMessage) {
+                    console.warn('UI non ancora pronto per aggiornare lo stato:', message);
+                    return;
+                }
                 dom.statusBanner.style.background = isError
                     ? 'rgba(244, 63, 94, 0.18)'
                     : 'rgba(56, 189, 248, 0.12)';
