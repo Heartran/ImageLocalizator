@@ -551,7 +551,8 @@
                 },
                 config: {
                     envLoaded: false,
-                    mapsKey: null
+                    mapsKey: null,
+                    mapId: null
                 }
             };
 
@@ -883,6 +884,10 @@
                         return;
                     }
                     state.config.mapsKey = apiKey;
+                    const mapId = (env.GOOGLE_MAPS_MAP_ID || env.GOOGLE_MAP_ID || '').trim();
+                    if (mapId) {
+                        state.config.mapId = mapId;
+                    }
                     state.config.envLoaded = true;
                     ensureGoogleMapsScript(apiKey);
                 } catch (error) {
@@ -960,6 +965,9 @@
                     disableDefaultUI: false,
                     gestureHandling: 'greedy'
                 };
+                if (state.config.mapId) {
+                    mapOptions.mapId = state.config.mapId;
+                }
                 state.map.instance = new google.maps.Map(document.getElementById('map'), mapOptions);
                 state.map.elevationService = new google.maps.ElevationService();
 
@@ -970,7 +978,11 @@
                     handleMapClick(event.latLng);
                 });
 
-                pushStatus('Mappa pronta. Clicca su un punto della foto e poi sulla mappa per completare la corrispondenza.', false);
+                if (!state.config.mapId) {
+                    pushStatus('Mappa pronta (2D). Per la visualizzazione 3D imposta GOOGLE_MAPS_MAP_ID nel file .env con un map ID vettoriale.', false);
+                } else {
+                    pushStatus('Mappa pronta. Clicca su un punto della foto e poi sulla mappa per completare la corrispondenza.', false);
+                }
             }
 
             function handleMapClick(latLng) {
