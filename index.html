@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -9,6 +9,8 @@
             color-scheme: dark;
             --bg: #0f172a;
             --bg-panel: #111c3a;
+            --transform-bg: #1e293b;
+            --transform-border: #334155;
             --bg-muted: #1e293b;
             --accent: #38bdf8;
             --warning: #f97316;
@@ -545,6 +547,62 @@
                 padding: 1.5rem;
             }
         }
+
+        .transform-panel {
+            background: var(--transform-bg);
+            border: 1px solid var(--transform-border);
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+
+        .transform-panel h3 {
+            margin-top: 0;
+            margin-bottom: 1rem;
+            font-size: 1.1rem;
+            color: var(--accent);
+        }
+
+        .transform-panel h4 {
+            margin: 0.5rem 0;
+            font-size: 0.9rem;
+            color: #94a3b8;
+        }
+
+        .transform-controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .transform-group {
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid var(--transform-border);
+            border-radius: 6px;
+            padding: 0.75rem;
+        }
+
+        .transform-group label {
+            display: block;
+            margin: 0.5rem 0;
+            font-size: 0.9rem;
+        }
+
+        .transform-group input[type="number"] {
+            width: 60px;
+            padding: 0.25rem 0.5rem;
+            margin-left: 0.5rem;
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 4px;
+            color: #e2e8f0;
+        }
+
+        #resetTransforms {
+            width: 100%;
+            margin-top: 0.5rem;
+        }
     </style>
 </head>
 <body>
@@ -650,46 +708,84 @@
             <div class="empty-state" id="emptyState">
                 Servono almeno 6 corrispondenze complete per stimare la posizione della telecamera.
             </div>
-            <table id="matchesTable" style="display:none;">
-                <thead>
-                    <tr>
-                        <th>#</th>
-                        <th>Punto foto (px)</th>
-                        <th>Punto mappa</th>
-                        <th>Altitudine (m)</th>
-                        <th>Azioni</th>
-                    </tr>
-                </thead>
-                <tbody id="matchesBody"></tbody>
-            </table>
-            <button class="btn-primary" id="solveButton">Calcola posa fotocamera</button>
-            <div class="results-card" id="resultsCard" style="display:none;">
-                <h3>Risultati stimati</h3>
-                <div class="results-grid">
-                    <div class="metric">
-                        <span>Latitudine</span>
-                        <strong id="resultLat">-</strong>
+            <div class="table-container">
+                <table id="correspondenceTable">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Immagine (x, y)</th>
+                            <th>Mappa (lat, lng, alt)</th>
+                            <th>Azioni</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Le righe verranno aggiunte dinamicamente -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="transform-panel">
+                <h3>Trasformazioni Assi 3D</h3>
+                <div class="transform-controls">
+                    <div class="transform-group">
+                        <h4>Traslazione</h4>
+                        <label>X: <input type="number" id="transform-translateX" data-transform="translateX" step="0.1"></label>
+                        <label>Y: <input type="number" id="transform-translateY" data-transform="translateY" step="0.1"></label>
+                        <label>Z: <input type="number" id="transform-translateZ" data-transform="translateZ" step="0.1"></label>
                     </div>
-                    <div class="metric">
-                        <span>Longitudine</span>
-                        <strong id="resultLng">-</strong>
+                    
+                    <div class="transform-group">
+                        <h4>Scala</h4>
+                        <label>X: <input type="number" id="transform-scaleX" data-transform="scaleX" step="0.1" value="1"></label>
+                        <label>Y: <input type="number" id="transform-scaleY" data-transform="scaleY" step="0.1" value="1"></label>
+                        <label>Z: <input type="number" id="transform-scaleZ" data-transform="scaleZ" step="0.1" value="1"></label>
                     </div>
-                    <div class="metric">
-                        <span>Altitudine</span>
-                        <strong id="resultAlt">-</strong>
+                    
+                    <div class="transform-group">
+                        <h4>Rotazione (°)</h4>
+                        <label>X: <input type="number" id="transform-rotateX" data-transform="rotateX" step="1"></label>
+                        <label>Y: <input type="number" id="transform-rotateY" data-transform="rotateY" step="1"></label>
+                        <label>Z: <input type="number" id="transform-rotateZ" data-transform="rotateZ" step="1"></label>
                     </div>
-                    <div class="metric">
-                        <span>Heading stimato</span>
-                        <strong id="resultHeading">-</strong>
-                    </div>
-                    <div class="metric">
-                        <span>Tilt stimato</span>
-                        <strong id="resultTilt">-</strong>
-                    </div>
-                    <div class="metric">
-                        <span>Errore medio di reproiezione</span>
-                        <strong id="resultReproj">-</strong>
-                    </div>
+                </div>
+                <button id="resetTransforms" class="button button-secondary">Reimposta trasformazioni</button>
+            </div>
+            
+            <div class="button-group">
+                <button id="clearPoints" class="button button-secondary">Pulisci punti</button>
+                <button id="computePose" class="button button-primary" disabled>Calcola posa</button>
+                <button id="exportData" class="button">Esporta dati</button>
+                <button id="importData" class="button">Importa dati</button>
+                <input type="file" id="importFile" accept=".json" style="display: none;">
+            </div>
+        </section>
+
+        <section class="results-panel">
+            <h2>Risultati stimati</h2>
+            <div class="results-grid">
+                <div class="metric">
+                    <span>Latitudine</span>
+                    <strong id="resultLat">-</strong>
+                </div>
+                <div class="metric">
+                    <span>Longitudine</span>
+                    <strong id="resultLng">-</strong>
+                </div>
+                <div class="metric">
+                    <span>Altitudine</span>
+                    <strong id="resultAlt">-</strong>
+                </div>
+                <div class="metric">
+                    <span>Heading stimato</span>
+                    <strong id="resultHeading">-</strong>
+                </div>
+                <div class="metric">
+                    <span>Tilt stimato</span>
+                    <strong id="resultTilt">-</strong>
+                </div>
+                <div class="metric">
+                    <span>Errore medio di reproiezione</span>
+                    <strong id="resultReproj">-</strong>
                 </div>
             </div>
         </section>
@@ -1827,6 +1923,39 @@
                 persistMapView();
             }
 
+            function arePointsCoplanar(points, tolerance = 1e-6) {
+                if (points.length < 4) return true; // Meno di 4 punti sono sempre complanari
+                
+                // Prendi i primi tre punti per formare un piano
+                const p0 = points[0];
+                const p1 = points[1];
+                const p2 = points[2];
+                
+                // Vettori nel piano
+                const v1 = {x: p1.x - p0.x, y: p1.y - p0.y, z: p1.z - p0.z};
+                const v2 = {x: p2.x - p0.x, y: p2.y - p0.y, z: p2.z - p0.z};
+                
+                // Vettore normale al piano
+                const normal = {
+                    x: v1.y * v2.z - v1.z * v2.y,
+                    y: v1.z * v2.x - v1.x * v2.z,
+                    z: v1.x * v2.y - v1.y * v2.x
+                };
+                
+                // Controlla se tutti gli altri punti giacciono sul piano
+                for (let i = 3; i < points.length; i++) {
+                    const p = points[i];
+                    const v = {x: p.x - p0.x, y: p.y - p0.y, z: p.z - p0.z};
+                    const dot = normal.x * v.x + normal.y * v.y + normal.z * v.z;
+                    
+                    if (Math.abs(dot) > tolerance) {
+                        return false; // Il punto non è sul piano
+                    }
+                }
+                
+                return true; // Tutti i punti sono complanari
+            }
+
             function computeCameraPose() {
                 if (!window.mlMatrix) {
                     pushStatus('ml-matrix non disponibile: impossibile stimare la posa.', true);
@@ -1835,6 +1964,13 @@
                 const usable = state.correspondences.filter((entry) => entry.imagePoint && entry.mapPoint && entry.mapPoint.ecef);
                 if (usable.length < 6) {
                     pushStatus('Servono almeno 6 corrispondenze complete per stimare la posa della fotocamera.', true);
+                    return;
+                }
+                
+                // Controlla se i punti sono complanari
+                const points3D = usable.map(entry => entry.mapPoint.ecef);
+                if (arePointsCoplanar(points3D)) {
+                    pushStatus('I punti selezionati sono complanari. Aggiungi punti non complanari per una stima accurata.', true);
                     return;
                 }
 
