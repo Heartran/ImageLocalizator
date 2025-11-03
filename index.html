@@ -222,6 +222,88 @@
             color: var(--text);
         }
 
+        .overlay-form {
+            display: grid;
+            gap: 0.85rem;
+            margin-top: 0.5rem;
+        }
+
+        .overlay-field {
+            display: grid;
+            gap: 0.35rem;
+            text-align: left;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .overlay-field input {
+            width: 100%;
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.6rem;
+            border: 1px solid rgba(59, 130, 246, 0.4);
+            background: rgba(15, 23, 42, 0.6);
+            color: var(--text);
+            font-size: 0.9rem;
+        }
+
+        .overlay-field input:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+        }
+
+        .overlay-remember {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .overlay-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .overlay-actions button {
+            padding: 0.6rem 1rem;
+            border-radius: 0.65rem;
+            border: 1px solid rgba(59, 130, 246, 0.35);
+            background: rgba(56, 189, 248, 0.12);
+            color: var(--accent);
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
+
+        .overlay-actions button:hover {
+            background: rgba(56, 189, 248, 0.25);
+        }
+
+        .overlay-actions .btn-primary {
+            border: none;
+            color: var(--text);
+            background: linear-gradient(135deg, rgba(56, 189, 248, 0.85), rgba(59, 130, 246, 0.85));
+        }
+
+        .overlay-actions .btn-primary:hover {
+            background: linear-gradient(135deg, rgba(56, 189, 248, 0.95), rgba(59, 130, 246, 0.95));
+        }
+
+        .link-button {
+            background: transparent !important;
+            border: none !important;
+            color: var(--text-muted) !important;
+            text-decoration: underline;
+            padding-left: 0;
+        }
+
+        .overlay-error {
+            margin: 0;
+            font-size: 0.8rem;
+            color: var(--danger);
+        }
+
         .legend {
             display: flex;
             gap: 1rem;
@@ -509,16 +591,44 @@
 
             <div class="panel map-panel">
                 <h2>Mappa satellitare <span>(3D)</span></h2>
-                <div class="map-container" id="mapContainer">
+                <div
+                    class="map-container"
+                    id="mapContainer"
+                    data-center-lat="48.85837"
+                    data-center-lng="2.29448"
+                    data-zoom="18"
+                    data-tilt="60"
+                    data-heading="0"
+                    data-tilt-step="5"
+                    data-heading-step="10"
+                >
                     <div id="map"></div>
                     <div class="map-overlay" id="mapOverlay">
                         <div class="overlay-card">
                             <h3>Mappa 3D non disponibile</h3>
-                            <p>
-                                Per utilizzare la vista 3D è necessario configurare nel file <code>.env</code>
-                                sia <code>GOOGLE_MAPS_API_KEY</code> che <code>GOOGLE_MAPS_MAP_ID</code>.
-                                Il Map ID deve fare riferimento ad una Vector Map attivata nelle API di Google Cloud.
+                            <p id="overlayMessage">
+                                Per utilizzare la vista 3D inserisci di seguito una API key valida e il relativo Map ID
+                                oppure assicurati che siano presenti nel file <code>.env</code>.
                             </p>
+                            <form id="overlayConfigForm" class="overlay-form">
+                                <label class="overlay-field">
+                                    <span>Google Maps API key</span>
+                                    <input type="text" id="overlayApiKey" autocomplete="off" placeholder="AIza..." required>
+                                </label>
+                                <label class="overlay-field">
+                                    <span>Google Maps Map ID</span>
+                                    <input type="text" id="overlayMapId" autocomplete="off" placeholder="xxxxxxxxxxxxxxxx" required>
+                                </label>
+                                <label class="overlay-remember">
+                                    <input type="checkbox" id="overlayRemember"> Ricorda questi valori nel browser
+                                </label>
+                                <div class="overlay-actions">
+                                    <button type="submit" class="btn-primary">Carica mappa</button>
+                                    <button type="button" id="overlayReloadEnv">Riprova lettura .env</button>
+                                    <button type="button" id="overlayClearStorage" class="link-button">Dimentica dati salvati</button>
+                                </div>
+                                <p class="overlay-error" id="overlayError" role="alert" hidden></p>
+                            </form>
                         </div>
                     </div>
                 </div>
@@ -590,6 +700,43 @@
         const ImageLocalizatorApp = (() => {
             'use strict';
 
+            const STORAGE_KEYS = {
+                credentials: 'image-localizator.mapsCredentials',
+                mapView: 'image-localizator.mapView'
+            };
+
+            const ALTITUDE_LIMITS = {
+                min: -1000,
+                max: 10000
+            };
+
+            const GOOGLE_MAX_TILT = 67.5;
+
+            const ALLOWED_IMAGE_TYPES = new Set([
+                'image/jpeg',
+                'image/png',
+                'image/webp',
+                'image/gif',
+                'image/bmp',
+                'image/heic',
+                'image/heif'
+            ]);
+
+            const ALLOWED_IMAGE_EXTENSIONS = new Set([
+                'jpg',
+                'jpeg',
+                'png',
+                'webp',
+                'gif',
+                'bmp',
+                'heic',
+                'heif',
+                'tif',
+                'tiff'
+            ]);
+
+            const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+
             const state = {
                 correspondences: [],
                 nextId: 1,
@@ -599,18 +746,27 @@
                     overlay: null,
                     overlayCtx: null,
                     naturalWidth: 0,
-                    naturalHeight: 0
+                    naturalHeight: 0,
+                    objectUrl: null
                 },
                 map: {
                     instance: null,
                     tilt: 60,
                     heading: 0,
+                    zoom: 18,
+                    center: null,
+                    tiltStep: 5,
+                    headingStep: 10,
+                    viewDefaults: null,
+                    preferredView: null,
                     elevationService: null
                 },
                 config: {
                     envLoaded: false,
                     mapsKey: null,
-                    mapId: null
+                    mapId: null,
+                    storageAvailable: false,
+                    rememberCredentials: false
                 }
             };
 
@@ -642,7 +798,312 @@
                 dom.headingLeft = document.getElementById('headingLeft');
                 dom.headingRight = document.getElementById('headingRight');
                 dom.resetView = document.getElementById('resetView');
+                dom.mapContainer = document.getElementById('mapContainer');
                 dom.mapOverlay = document.getElementById('mapOverlay');
+                dom.overlayForm = document.getElementById('overlayConfigForm');
+                dom.overlayApiKey = document.getElementById('overlayApiKey');
+                dom.overlayMapId = document.getElementById('overlayMapId');
+                dom.overlayRemember = document.getElementById('overlayRemember');
+                dom.overlayReloadEnv = document.getElementById('overlayReloadEnv');
+                dom.overlayClearStorage = document.getElementById('overlayClearStorage');
+                dom.overlayError = document.getElementById('overlayError');
+                dom.overlayMessage = document.getElementById('overlayMessage');
+            }
+
+            function initializeStorage() {
+                try {
+                    const testKey = '__image_localizator__';
+                    localStorage.setItem(testKey, '1');
+                    localStorage.removeItem(testKey);
+                    state.config.storageAvailable = true;
+                } catch (error) {
+                    state.config.storageAvailable = false;
+                }
+            }
+
+            function setupOverlayHandlers() {
+                if (!dom.overlayForm) {
+                    return;
+                }
+                dom.overlayForm.addEventListener('submit', handleOverlaySubmit);
+                if (dom.overlayReloadEnv) {
+                    dom.overlayReloadEnv.addEventListener('click', () => loadMapsApiFromEnv(true));
+                }
+                if (dom.overlayClearStorage) {
+                    dom.overlayClearStorage.addEventListener('click', handleOverlayClearStorage);
+                }
+                if (dom.overlayRemember) {
+                    dom.overlayRemember.addEventListener('change', (event) => {
+                        state.config.rememberCredentials = event.target.checked;
+                        if (!state.config.rememberCredentials) {
+                            clearStoredCredentials();
+                        } else if (state.config.mapsKey && state.config.mapId) {
+                            persistCredentials();
+                        }
+                    });
+                }
+            }
+
+            function hydrateConfigurationFromStorage() {
+                if (!state.config.storageAvailable) {
+                    return;
+                }
+                try {
+                    const storedCredentials = localStorage.getItem(STORAGE_KEYS.credentials);
+                    if (storedCredentials) {
+                        const parsed = JSON.parse(storedCredentials);
+                        if (parsed && typeof parsed === 'object') {
+                            if (typeof parsed.mapsKey === 'string') {
+                                state.config.mapsKey = parsed.mapsKey;
+                            }
+                            if (typeof parsed.mapId === 'string') {
+                                state.config.mapId = parsed.mapId;
+                            }
+                            state.config.rememberCredentials = Boolean(parsed.remember);
+                        }
+                    }
+                } catch (error) {
+                    console.warn('Impossibile leggere le credenziali salvate:', error);
+                }
+
+                try {
+                    const storedView = localStorage.getItem(STORAGE_KEYS.mapView);
+                    if (storedView) {
+                        const parsedView = JSON.parse(storedView);
+                        if (isValidStoredView(parsedView)) {
+                            state.map.preferredView = parsedView;
+                            state.map.center = { lat: parsedView.center.lat, lng: parsedView.center.lng };
+                            state.map.zoom = parsedView.zoom;
+                            state.map.tilt = parsedView.tilt;
+                            state.map.heading = parsedView.heading;
+                        }
+                    }
+                } catch (error) {
+                    console.warn('Impossibile leggere le preferenze della vista:', error);
+                }
+            }
+
+            function syncOverlayForm() {
+                if (!dom.overlayForm) {
+                    return;
+                }
+                if (dom.overlayApiKey) {
+                    dom.overlayApiKey.value = state.config.mapsKey ?? '';
+                }
+                if (dom.overlayMapId) {
+                    dom.overlayMapId.value = state.config.mapId ?? '';
+                }
+                if (dom.overlayRemember) {
+                    dom.overlayRemember.checked = state.config.rememberCredentials;
+                    dom.overlayRemember.disabled = !state.config.storageAvailable;
+                }
+                if (dom.overlayClearStorage) {
+                    dom.overlayClearStorage.disabled = !state.config.storageAvailable;
+                }
+                clearOverlayError();
+            }
+
+            function initializeMapConfiguration() {
+                const container = dom.mapContainer;
+                const defaults = {
+                    center: {
+                        lat: parseNumber(container?.dataset.centerLat, 48.85837),
+                        lng: parseNumber(container?.dataset.centerLng, 2.29448)
+                    },
+                    zoom: parseNumber(container?.dataset.zoom, 18),
+                    tilt: parseNumber(container?.dataset.tilt, 60),
+                    heading: parseNumber(container?.dataset.heading, 0),
+                    tiltStep: parseNumber(container?.dataset.tiltStep, 5),
+                    headingStep: parseNumber(container?.dataset.headingStep, 10)
+                };
+
+                state.map.viewDefaults = defaults;
+                state.map.center = { ...defaults.center };
+                state.map.zoom = defaults.zoom;
+                state.map.tilt = defaults.tilt;
+                state.map.heading = defaults.heading;
+                state.map.tiltStep = defaults.tiltStep;
+                state.map.headingStep = defaults.headingStep;
+                if (!state.map.preferredView) {
+                    state.map.preferredView = {
+                        center: { ...defaults.center },
+                        zoom: defaults.zoom,
+                        tilt: defaults.tilt,
+                        heading: defaults.heading
+                    };
+                }
+            }
+
+            function handleOverlaySubmit(event) {
+                event.preventDefault();
+                if (!dom.overlayApiKey || !dom.overlayMapId) {
+                    return;
+                }
+                clearOverlayError();
+                const apiKey = dom.overlayApiKey.value.trim();
+                const mapId = dom.overlayMapId.value.trim();
+                if (!apiKey) {
+                    showOverlayError('Inserisci una Google Maps API key valida.');
+                    dom.overlayApiKey.focus();
+                    return;
+                }
+                if (!mapId) {
+                    showOverlayError('Inserisci un Map ID vettoriale valido.');
+                    dom.overlayMapId.focus();
+                    return;
+                }
+
+                state.config.mapsKey = apiKey;
+                state.config.mapId = mapId;
+                state.config.rememberCredentials = Boolean(dom.overlayRemember?.checked);
+                if (state.config.rememberCredentials) {
+                    persistCredentials();
+                } else {
+                    clearStoredCredentials();
+                }
+
+                syncOverlayForm();
+                hideMapOverlay();
+                pushStatus('Credenziali caricate manualmente. Caricamento della mappa in corso...', false);
+                ensureGoogleMapsScript(apiKey);
+            }
+
+            function handleOverlayClearStorage() {
+                if (!state.config.storageAvailable) {
+                    showOverlayError('Il salvataggio locale non è disponibile in questa sessione.');
+                    return;
+                }
+                clearStoredCredentials();
+                clearStoredViewPreferences();
+                state.config.mapsKey = null;
+                state.config.mapId = null;
+                state.config.rememberCredentials = false;
+                syncOverlayForm();
+                pushStatus('Dati salvati rimossi dal browser.', false);
+            }
+
+            function persistCredentials() {
+                if (!state.config.storageAvailable) {
+                    return;
+                }
+                try {
+                    const payload = {
+                        mapsKey: state.config.mapsKey,
+                        mapId: state.config.mapId,
+                        remember: true
+                    };
+                    localStorage.setItem(STORAGE_KEYS.credentials, JSON.stringify(payload));
+                } catch (error) {
+                    console.warn('Impossibile salvare le credenziali:', error);
+                }
+            }
+
+            function clearStoredCredentials() {
+                if (!state.config.storageAvailable) {
+                    return;
+                }
+                try {
+                    localStorage.removeItem(STORAGE_KEYS.credentials);
+                } catch (error) {
+                    console.warn('Impossibile cancellare le credenziali salvate:', error);
+                }
+            }
+
+            function persistMapView() {
+                if (!state.config.storageAvailable) {
+                    return;
+                }
+                if (!state.map.center) {
+                    return;
+                }
+                try {
+                    const payload = {
+                        center: { lat: state.map.center.lat, lng: state.map.center.lng },
+                        zoom: state.map.zoom,
+                        tilt: state.map.tilt,
+                        heading: state.map.heading
+                    };
+                    localStorage.setItem(STORAGE_KEYS.mapView, JSON.stringify(payload));
+                    state.map.preferredView = {
+                        center: { ...payload.center },
+                        zoom: payload.zoom,
+                        tilt: payload.tilt,
+                        heading: payload.heading
+                    };
+                } catch (error) {
+                    console.warn('Impossibile salvare la vista della mappa:', error);
+                }
+            }
+
+            function clearStoredViewPreferences() {
+                if (!state.config.storageAvailable) {
+                    return;
+                }
+                try {
+                    localStorage.removeItem(STORAGE_KEYS.mapView);
+                } catch (error) {
+                    console.warn('Impossibile rimuovere le preferenze della vista:', error);
+                }
+                state.map.preferredView = {
+                    center: { ...state.map.viewDefaults.center },
+                    zoom: state.map.viewDefaults.zoom,
+                    tilt: state.map.viewDefaults.tilt,
+                    heading: state.map.viewDefaults.heading
+                };
+            }
+
+            function showOverlayError(message) {
+                if (dom.overlayError) {
+                    dom.overlayError.textContent = message;
+                    dom.overlayError.hidden = false;
+                }
+            }
+
+            function clearOverlayError() {
+                if (dom.overlayError) {
+                    dom.overlayError.textContent = '';
+                    dom.overlayError.hidden = true;
+                }
+            }
+
+            function isValidStoredView(view) {
+                if (!view || typeof view !== 'object') {
+                    return false;
+                }
+                const centerValid = view.center && Number.isFinite(view.center.lat) && Number.isFinite(view.center.lng);
+                return (
+                    centerValid &&
+                    Number.isFinite(view.zoom) &&
+                    Number.isFinite(view.tilt) &&
+                    Number.isFinite(view.heading)
+                );
+            }
+
+            function updateMapStateFromInstance() {
+                if (!state.map.instance) {
+                    return;
+                }
+                const center = state.map.instance.getCenter?.();
+                if (center) {
+                    state.map.center = { lat: center.lat(), lng: center.lng() };
+                }
+                const zoom = state.map.instance.getZoom?.();
+                if (Number.isFinite(zoom)) {
+                    state.map.zoom = zoom;
+                }
+                const heading = state.map.instance.getHeading?.();
+                if (Number.isFinite(heading)) {
+                    state.map.heading = heading;
+                }
+                const tilt = state.map.instance.getTilt?.();
+                if (Number.isFinite(tilt)) {
+                    state.map.tilt = tilt;
+                }
+            }
+
+            function parseNumber(value, fallback) {
+                const parsed = Number(value);
+                return Number.isFinite(parsed) ? parsed : fallback;
             }
 
             function init() {
@@ -652,6 +1113,12 @@
                 }
 
                 cacheDom();
+                initializeStorage();
+                initializeMapConfiguration();
+                setupOverlayHandlers();
+                hydrateConfigurationFromStorage();
+                syncOverlayForm();
+
                 state.image.element = dom.photo;
                 state.image.overlay = dom.overlay;
                 state.image.overlayCtx = dom.overlay.getContext('2d');
@@ -663,10 +1130,10 @@
                 dom.matchesBody.addEventListener('click', handleTableClick);
                 dom.matchesBody.addEventListener('change', handleTableChange);
                 dom.solveButton.addEventListener('click', computeCameraPose);
-                dom.tiltIncrease.addEventListener('click', () => adjustTilt(5));
-                dom.tiltDecrease.addEventListener('click', () => adjustTilt(-5));
-                dom.headingLeft.addEventListener('click', () => adjustHeading(-10));
-                dom.headingRight.addEventListener('click', () => adjustHeading(10));
+                dom.tiltIncrease.addEventListener('click', () => adjustTilt(state.map.tiltStep));
+                dom.tiltDecrease.addEventListener('click', () => adjustTilt(-state.map.tiltStep));
+                dom.headingLeft.addEventListener('click', () => adjustHeading(-state.map.headingStep));
+                dom.headingRight.addEventListener('click', () => adjustHeading(state.map.headingStep));
                 dom.resetView.addEventListener('click', resetMapView);
                 window.addEventListener('resize', syncOverlaySize);
 
@@ -681,19 +1148,79 @@
                 });
             }
 
-            function handleImageSelection(event) {
-                const file = event.target.files?.[0];
-                if (!file) {
-                    return;
-                }
-                const url = URL.createObjectURL(file);
-                state.image.element.src = url;
+            function resetCorrespondencesState(options = {}) {
+                state.correspondences.forEach((entry) => {
+                    if (entry.marker) {
+                        entry.marker.setMap(null);
+                    }
+                });
                 state.correspondences = [];
                 state.nextId = 1;
                 state.pending = null;
                 updateTable();
                 drawOverlay();
-                dom.resultsCard.style.display = 'none';
+                if (dom.resultsCard) {
+                    dom.resultsCard.style.display = 'none';
+                }
+                if (options.statusMessage) {
+                    pushStatus(options.statusMessage, Boolean(options.isError));
+                }
+            }
+
+            function releaseImageObjectUrl() {
+                if (state.image.objectUrl) {
+                    try {
+                        URL.revokeObjectURL(state.image.objectUrl);
+                    } catch (error) {
+                        console.warn('Impossibile rilasciare l\'URL dell\'immagine:', error);
+                    }
+                    state.image.objectUrl = null;
+                }
+            }
+
+            function isSupportedImageFile(file) {
+                if (!file) {
+                    return false;
+                }
+                if (file.type && ALLOWED_IMAGE_TYPES.has(file.type.toLowerCase())) {
+                    return true;
+                }
+                const name = file.name || '';
+                const dotIndex = name.lastIndexOf('.');
+                if (dotIndex !== -1) {
+                    const ext = name.slice(dotIndex + 1).toLowerCase();
+                    if (ALLOWED_IMAGE_EXTENSIONS.has(ext)) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            function handleImageSelection(event) {
+                const file = event.target.files?.[0];
+                if (!file) {
+                    return;
+                }
+                if (file.size > MAX_IMAGE_BYTES) {
+                    pushStatus('Il file selezionato supera i 20 MB consentiti.', true);
+                    event.target.value = '';
+                    return;
+                }
+                if (!isSupportedImageFile(file)) {
+                    pushStatus('Formato immagine non supportato. Utilizza JPEG, PNG, WebP o formati standard.', true);
+                    event.target.value = '';
+                    return;
+                }
+                try {
+                    const url = URL.createObjectURL(file);
+                    releaseImageObjectUrl();
+                    state.image.objectUrl = url;
+                    state.image.element.src = url;
+                    resetCorrespondencesState();
+                } catch (error) {
+                    console.error('Errore nel caricamento dell\'immagine:', error);
+                    pushStatus('Impossibile caricare l\'immagine selezionata. Riprovare con un file differente.', true);
+                }
             }
 
             function handleImageClick(event) {
@@ -740,18 +1267,7 @@
             }
 
             function clearImagePoints() {
-                state.correspondences.forEach((entry) => {
-                    if (entry.marker) {
-                        entry.marker.setMap(null);
-                    }
-                });
-                state.correspondences = [];
-                state.nextId = 1;
-                state.pending = null;
-                updateTable();
-                drawOverlay();
-                dom.resultsCard.style.display = 'none';
-                pushStatus('Tutti i punti sono stati rimossi.', false);
+                resetCorrespondencesState({ statusMessage: 'Tutti i punti sono stati rimossi.', isError: false });
             }
 
             function fitImageToContainer(notify = false) {
@@ -820,42 +1336,62 @@
             }
 
             function updateTable() {
-                if (!dom.matchesBody) {
+                if (!dom.matchesBody || !dom.matchesTable || !dom.emptyState) {
                     return;
                 }
-                dom.matchesBody.innerHTML = '';
+
                 if (!state.correspondences.length) {
                     dom.matchesTable.style.display = 'none';
                     dom.emptyState.style.display = 'block';
+                    dom.matchesBody.textContent = '';
                     return;
                 }
+
                 dom.matchesTable.style.display = 'table';
                 dom.emptyState.style.display = 'none';
 
+                const existingRows = new Map(Array.from(dom.matchesBody.children).map((row) => [Number(row.dataset.id), row]));
+                const fragment = document.createDocumentFragment();
+
                 state.correspondences.forEach((entry) => {
-                    const tr = document.createElement('tr');
-                    tr.dataset.id = entry.id.toString();
-
-                    const latLngContent = entry.mapPoint
-                        ? `<div>Lat: ${entry.mapPoint.lat.toFixed(6)}</div><div>Lng: ${entry.mapPoint.lng.toFixed(6)}</div>`
-                        : '<div class="secondary">Clicca sulla mappa</div>';
-
-                    const altitudeValue = entry.mapPoint?.altitude != null
-                        ? entry.mapPoint.altitude.toFixed(2)
-                        : '';
-
-                    tr.innerHTML = `
-                        <td><span class="badge">${entry.id}</span></td>
-                        <td>${entry.imagePoint.x.toFixed(1)}, ${entry.imagePoint.y.toFixed(1)}</td>
-                        <td>${latLngContent}</td>
-                        <td><input type="number" class="altitude-input" data-id="${entry.id}" value="${altitudeValue}" step="0.1" placeholder="Alt"></td>
-                        <td class="table-actions"><button data-action="remove" data-id="${entry.id}">Rimuovi</button></td>
-                    `;
-                    dom.matchesBody.appendChild(tr);
+                    let row = existingRows.get(entry.id);
+                    if (!row) {
+                        row = document.createElement('tr');
+                    }
+                    renderCorrespondenceRow(row, entry);
+                    fragment.appendChild(row);
+                    existingRows.delete(entry.id);
                 });
+
+                existingRows.forEach((row) => row.remove());
+                dom.matchesBody.replaceChildren(fragment);
 
                 if (state.pending?.type === 'map') {
                     highlightPending(state.pending.id);
+                }
+            }
+
+            function renderCorrespondenceRow(row, entry) {
+                const latLngContent = entry.mapPoint
+                    ? `<div>Lat: ${entry.mapPoint.lat.toFixed(6)}</div><div>Lng: ${entry.mapPoint.lng.toFixed(6)}</div>`
+                    : '<div class="secondary">Clicca sulla mappa</div>';
+
+                const altitudeValue = entry.mapPoint?.altitude != null
+                    ? entry.mapPoint.altitude.toFixed(2)
+                    : '';
+
+                row.dataset.id = entry.id.toString();
+                row.innerHTML = `
+                    <td><span class="badge">${entry.id}</span></td>
+                    <td>${entry.imagePoint.x.toFixed(1)}, ${entry.imagePoint.y.toFixed(1)}</td>
+                    <td>${latLngContent}</td>
+                    <td><input type="number" class="altitude-input" data-id="${entry.id}" value="${altitudeValue}" step="0.1" placeholder="Alt"></td>
+                    <td class="table-actions"><button data-action="remove" data-id="${entry.id}">Rimuovi</button></td>
+                `;
+
+                const input = row.querySelector('input.altitude-input');
+                if (input) {
+                    input.dataset.previousValue = altitudeValue;
                 }
             }
 
@@ -877,14 +1413,34 @@
                 }
                 if (target.classList.contains('altitude-input')) {
                     const id = Number(target.dataset.id);
-                    const value = Number(target.value);
-                    if (Number.isNaN(value)) {
+                    const rawValue = target.value.trim();
+                    const previousValue = target.dataset.previousValue ?? '';
+                    if (rawValue === '') {
+                        const entryToClear = state.correspondences.find((item) => item.id === id);
+                        if (entryToClear && entryToClear.mapPoint) {
+                            entryToClear.mapPoint.altitude = null;
+                            entryToClear.mapPoint.ecef = null;
+                        }
+                        target.dataset.previousValue = '';
+                        return;
+                    }
+                    const value = Number(rawValue);
+                    if (!Number.isFinite(value)) {
+                        target.value = previousValue;
+                        return;
+                    }
+                    if (value < ALTITUDE_LIMITS.min || value > ALTITUDE_LIMITS.max) {
+                        pushStatus(`L'altitudine deve essere compresa tra ${ALTITUDE_LIMITS.min} m e ${ALTITUDE_LIMITS.max} m.`, true);
+                        target.value = previousValue;
                         return;
                     }
                     const entry = state.correspondences.find((item) => item.id === id);
                     if (entry && entry.mapPoint) {
                         entry.mapPoint.altitude = value;
                         entry.mapPoint.ecef = latLngAltToECEF(entry.mapPoint.lat, entry.mapPoint.lng, value);
+                        target.dataset.previousValue = value.toFixed(2);
+                    } else {
+                        target.value = previousValue;
                     }
                 }
             }
@@ -928,7 +1484,7 @@
                 dom.statusMessage.textContent = message;
             }
 
-            function showMapOverlay(message) {
+            function showMapOverlay(options = {}) {
                 if (!dom.mapOverlay) {
                     try {
                         cacheDom();
@@ -939,13 +1495,25 @@
                 if (!dom.mapOverlay) {
                     return;
                 }
-                if (message) {
-                    const paragraph = dom.mapOverlay.querySelector('.overlay-card p');
-                    if (paragraph) {
-                        paragraph.innerHTML = message;
-                    }
+
+                const config = typeof options === 'string' ? { message: options } : options;
+                if (config.message && dom.overlayMessage) {
+                    dom.overlayMessage.innerHTML = config.message;
+                }
+                if (config.error) {
+                    showOverlayError(config.error);
+                } else {
+                    clearOverlayError();
+                }
+                if (config.prefill !== false) {
+                    syncOverlayForm();
                 }
                 dom.mapOverlay.classList.add('visible');
+                if (config.focus === 'mapId' && dom.overlayMapId) {
+                    dom.overlayMapId.focus();
+                } else if (config.focus === 'apiKey' && dom.overlayApiKey) {
+                    dom.overlayApiKey.focus();
+                }
             }
 
             function hideMapOverlay() {
@@ -953,38 +1521,79 @@
                     return;
                 }
                 dom.mapOverlay.classList.remove('visible');
+                clearOverlayError();
             }
 
-            async function loadMapsApiFromEnv() {
-                if (state.config.mapsKey) {
-                    ensureGoogleMapsScript(state.config.mapsKey);
-                    return;
+            async function loadMapsApiFromEnv(forceReload = false) {
+                if (!forceReload) {
+                    if (state.config.mapsKey && state.config.mapId) {
+                        ensureGoogleMapsScript(state.config.mapsKey);
+                        return;
+                    }
+                    if (state.config.mapsKey && !state.config.mapId) {
+                        pushStatus('Specifica un GOOGLE_MAPS_MAP_ID per abilitare la mappa 3D.', true);
+                        showMapOverlay({
+                            message: 'Abbiamo trovato una API key ma manca <code>GOOGLE_MAPS_MAP_ID</code>. Inserisci un Map ID vettoriale valido o aggiornalo nel file <code>.env</code>.',
+                            focus: 'mapId'
+                        });
+                        return;
+                    }
+                    if (!state.config.mapsKey && state.config.mapId) {
+                        showMapOverlay({
+                            message: 'È stato rilevato un <code>GOOGLE_MAPS_MAP_ID</code> ma manca la chiave. Inseriscila qui sotto o aggiornala nel file <code>.env</code>.',
+                            focus: 'apiKey'
+                        });
+                        return;
+                    }
                 }
+
                 try {
                     const envContent = await readEnvFile();
                     const env = parseEnv(envContent);
                     const apiKeyRaw = env.GOOGLE_MAPS_API_KEY || env.GOOGLE_MAPS_KEY || '';
                     const apiKey = apiKeyRaw.trim();
+                    const mapIdRaw = env.GOOGLE_MAPS_MAP_ID || env.GOOGLE_MAP_ID || '';
+                    const mapId = mapIdRaw.trim();
+
                     if (!apiKey) {
-                        pushStatus('Chiave Google Maps non trovata nel file .env. Copia .env.example e inserisci la tua API key.', true);
+                        pushStatus('Chiave Google Maps non trovata nel file .env. Inserisci manualmente la tua API key.', true);
+                        showMapOverlay({
+                            message: 'Il file <code>.env</code> è stato letto ma non contiene <code>GOOGLE_MAPS_API_KEY</code>. Inserisci manualmente la chiave o aggiornalo e riprova.',
+                            focus: 'apiKey'
+                        });
                         return;
                     }
+
                     state.config.mapsKey = apiKey;
-                    const mapId = (env.GOOGLE_MAPS_MAP_ID || env.GOOGLE_MAP_ID || '').trim();
                     if (mapId) {
                         state.config.mapId = mapId;
                     }
+
                     if (!state.config.mapId) {
-                        showMapOverlay('Per utilizzare la vista 3D è necessario impostare <code>GOOGLE_MAPS_MAP_ID</code> in <code>.env</code>. Crea un Map ID vettoriale nella Google Cloud Console (Map Management).');
-                        pushStatus('Configura GOOGLE_MAPS_MAP_ID in .env per abilitare la mappa 3D.', true);
+                        pushStatus('Configura GOOGLE_MAPS_MAP_ID in .env per abilitare la mappa 3D oppure inseriscilo manualmente.', true);
+                        showMapOverlay({
+                            message: 'Per utilizzare la vista 3D imposta <code>GOOGLE_MAPS_MAP_ID</code> nel file <code>.env</code> oppure inserisci il valore manualmente qui sotto.',
+                            focus: 'mapId'
+                        });
                         return;
                     }
+
                     state.config.envLoaded = true;
+                    if (state.config.rememberCredentials) {
+                        persistCredentials();
+                    }
+                    syncOverlayForm();
+                    hideMapOverlay();
+                    pushStatus('Credenziali caricate da .env. Caricamento della mappa in corso...', false);
                     ensureGoogleMapsScript(apiKey);
                 } catch (error) {
                     console.error(error);
-                    pushStatus('Non riesco a leggere il file .env. Assicurati che esista e che contenga GOOGLE_MAPS_API_KEY.', true);
-                    showMapOverlay('Non riesco a leggere il file <code>.env</code>. Assicurati che sia raggiungibile dal server locale e contenga <code>GOOGLE_MAPS_API_KEY</code> e <code>GOOGLE_MAPS_MAP_ID</code>.');
+                    pushStatus('Non riesco a leggere il file .env. Inserisci manualmente i valori richiesti.', true);
+                    showMapOverlay({
+                        message: 'Non riesco a leggere il file <code>.env</code>. Assicurati che sia raggiungibile dal server locale e contenga <code>GOOGLE_MAPS_API_KEY</code> e <code>GOOGLE_MAPS_MAP_ID</code>.',
+                        focus: 'apiKey',
+                        error: 'Lettura del file .env non riuscita.'
+                    });
                 }
             }
 
@@ -1039,7 +1648,11 @@
                 script.dataset.key = apiKey;
                 script.addEventListener('error', () => {
                     pushStatus('Errore nel caricamento di Google Maps. Verifica la tua API key nel file .env.', true);
-                    showMapOverlay('Errore nel caricamento della libreria Google Maps. Controlla che <code>GOOGLE_MAPS_API_KEY</code> e <code>GOOGLE_MAPS_MAP_ID</code> siano corretti e che il server sia avviato tramite <code>python -m http.server</code>.');
+                    showMapOverlay({
+                        message: 'Errore nel caricamento della libreria Google Maps. Controlla che <code>GOOGLE_MAPS_API_KEY</code> e <code>GOOGLE_MAPS_MAP_ID</code> siano corretti e che il server sia avviato tramite <code>python -m http.server</code>.',
+                        error: 'Impossibile scaricare le API Google Maps.',
+                        focus: 'apiKey'
+                    });
                 });
                 document.body.appendChild(script);
             }
@@ -1047,13 +1660,22 @@
             function initMap() {
                 if (!window.google || !window.google.maps) {
                     pushStatus('Google Maps non è stato caricato. Inserisci una API key valida e ricarica la pagina.', true);
+                    showMapOverlay({ focus: 'apiKey' });
                     return;
                 }
+                const initialView = state.map.preferredView || state.map.viewDefaults;
+                if (initialView) {
+                    state.map.center = { lat: initialView.center.lat, lng: initialView.center.lng };
+                    state.map.zoom = initialView.zoom;
+                    state.map.tilt = clamp(initialView.tilt, 0, GOOGLE_MAX_TILT);
+                    state.map.heading = initialView.heading;
+                }
+
                 const mapOptions = {
-                    center: { lat: 48.85837, lng: 2.29448 },
-                    zoom: 18,
-                    heading: state.map.heading,
-                    tilt: state.map.tilt,
+                    center: state.map.center || { lat: 48.85837, lng: 2.29448 },
+                    zoom: state.map.zoom ?? 18,
+                    heading: state.map.heading ?? 0,
+                    tilt: state.map.tilt ?? 60,
                     mapTypeId: 'satellite',
                     disableDefaultUI: false,
                     gestureHandling: 'greedy'
@@ -1071,6 +1693,14 @@
                     }
                     handleMapClick(event.latLng);
                 });
+
+                state.map.instance.addListener('idle', () => {
+                    updateMapStateFromInstance();
+                    persistMapView();
+                });
+
+                updateMapStateFromInstance();
+                persistMapView();
 
                 pushStatus('Mappa 3D pronta. Clicca su un punto della foto e poi sulla mappa per completare la corrispondenza.', false);
             }
@@ -1162,30 +1792,39 @@
                 if (!state.map.instance) {
                     return;
                 }
-                state.map.tilt = clamp(state.map.tilt + step, 0, 67.5);
+                state.map.tilt = clamp((state.map.tilt ?? 0) + step, 0, GOOGLE_MAX_TILT);
                 state.map.instance.setTilt(state.map.tilt);
+                persistMapView();
             }
 
             function adjustHeading(step) {
                 if (!state.map.instance) {
                     return;
                 }
-                state.map.heading = (state.map.heading + step + 360) % 360;
+                state.map.heading = ((state.map.heading ?? 0) + step + 360) % 360;
                 state.map.instance.setHeading(state.map.heading);
+                persistMapView();
             }
 
             function resetMapView() {
                 if (!state.map.instance) {
                     return;
                 }
-                state.map.tilt = 60;
-                state.map.heading = 0;
+                const target = state.map.viewDefaults || state.map.preferredView;
+                if (!target) {
+                    return;
+                }
+                state.map.center = { lat: target.center.lat, lng: target.center.lng };
+                state.map.zoom = target.zoom;
+                state.map.heading = target.heading;
+                state.map.tilt = clamp(target.tilt, 0, GOOGLE_MAX_TILT);
                 state.map.instance.moveCamera({
-                    center: state.map.instance.getCenter(),
-                    zoom: state.map.instance.getZoom(),
+                    center: state.map.center,
+                    zoom: state.map.zoom,
                     heading: state.map.heading,
                     tilt: state.map.tilt
                 });
+                persistMapView();
             }
 
             function computeCameraPose() {
@@ -1199,76 +1838,127 @@
                     return;
                 }
 
+                let projectionMatrix;
                 try {
-                    const { Matrix, SVD } = window.mlMatrix;
-                    const Adata = [];
+                    projectionMatrix = estimateProjectionMatrix(usable);
+                } catch (error) {
+                    console.error('Errore nella costruzione della matrice di proiezione:', error);
+                    pushStatus(error.message || 'Impossibile costruire il sistema per la stima della posa.', true);
+                    return;
+                }
 
-                    usable.forEach((entry) => {
-                        const { x, y } = entry.imagePoint;
-                        const { x: X, y: Y, z: Z } = entry.mapPoint.ecef;
-                        Adata.push([X, Y, Z, 1, 0, 0, 0, 0, -x * X, -x * Y, -x * Z, -x]);
-                        Adata.push([0, 0, 0, 0, X, Y, Z, 1, -y * X, -y * Y, -y * Z, -y]);
-                    });
+                const { Matrix } = window.mlMatrix;
+                const M = projectionMatrix.subMatrix(0, 2, 0, 2);
+                const p4 = projectionMatrix.subMatrix(0, 2, 3, 3);
 
-                    const A = new Matrix(Adata);
-                    const svd = new SVD(A);
-                    const V = svd.rightSingularVectors;
-                    const hVec = V.subMatrix(0, V.rows - 1, V.columns - 1, V.columns - 1);
-                    const h = hVec.to1DArray();
-                    const P = Matrix.from1DArray(3, 4, h);
-
-                    const M = P.subMatrix(0, 2, 0, 2);
-                    const p4 = P.subMatrix(0, 2, 3, 3);
-
+                let cameraECEF;
+                let geo;
+                try {
                     const Minv = invert3x3(M, Matrix);
                     const cameraCenterVec = Minv.mmul(p4);
-                    const cameraECEF = {
+                    cameraECEF = {
                         x: -cameraCenterVec.get(0, 0),
                         y: -cameraCenterVec.get(1, 0),
                         z: -cameraCenterVec.get(2, 0)
                     };
-
-                    const geo = ecefToGeodetic(cameraECEF.x, cameraECEF.y, cameraECEF.z);
-                    dom.resultLat.textContent = `${geo.lat.toFixed(6)}°`;
-                    dom.resultLng.textContent = `${geo.lng.toFixed(6)}°`;
-                    dom.resultAlt.textContent = `${geo.altitude.toFixed(2)} m`;
-
-                    let headingDisplay = '-';
-                    let tiltDisplay = '-';
-
-                    try {
-                        const { R } = decomposeKR(M, Matrix);
-                        const forward = cameraForwardVector(R);
-                        const { heading, tilt } = computeViewAngles(forward, cameraECEF);
-                        headingDisplay = `${heading.toFixed(1)}°`;
-                        tiltDisplay = `${tilt.toFixed(1)}°`;
-                        if (state.map.instance) {
-                            state.map.instance.moveCamera({
-                                center: { lat: geo.lat, lng: geo.lng },
-                                zoom: 19,
-                                heading,
-                                tilt: clamp(tilt, 0, 67.5)
-                            });
-                            state.map.heading = heading;
-                            state.map.tilt = clamp(tilt, 0, 67.5);
-                        }
-                    } catch (orientationError) {
-                        headingDisplay = 'n/d';
-                        tiltDisplay = 'n/d';
-                    }
-
-                    dom.resultHeading.textContent = headingDisplay;
-                    dom.resultTilt.textContent = tiltDisplay;
-
-                    const reprojectionError = computeReprojectionError(P, usable);
-                    dom.resultReproj.textContent = `${reprojectionError.toFixed(2)} px`;
-                    dom.resultsCard.style.display = 'grid';
-
-                    pushStatus('Posa stimata. Verifica i valori e rifinisci le corrispondenze se necessario.', false);
+                    geo = ecefToGeodetic(cameraECEF.x, cameraECEF.y, cameraECEF.z);
                 } catch (error) {
-                    console.error(error);
-                    pushStatus('Errore nel calcolo della posa. Controlla che i punti siano ben distribuiti e riprova.', true);
+                    console.error('Errore nel calcolo del centro della fotocamera:', error);
+                    pushStatus('Impossibile ricavare il centro della fotocamera. Verifica che i punti non siano degeneri.', true);
+                    return;
                 }
+
+                dom.resultLat.textContent = `${geo.lat.toFixed(6)}°`;
+                dom.resultLng.textContent = `${geo.lng.toFixed(6)}°`;
+                dom.resultAlt.textContent = `${geo.altitude.toFixed(2)} m`;
+
+                let headingDisplay = '-';
+                let tiltDisplay = '-';
+
+                try {
+                    const { R } = decomposeKR(M, Matrix);
+                    const forward = cameraForwardVector(R);
+                    const { heading, tilt } = computeViewAngles(forward, cameraECEF);
+                    headingDisplay = `${heading.toFixed(1)}°`;
+                    tiltDisplay = `${tilt.toFixed(1)}°`;
+                    if (state.map.instance) {
+                        const clampedTilt = clamp(tilt, 0, GOOGLE_MAX_TILT);
+                        state.map.instance.moveCamera({
+                            center: { lat: geo.lat, lng: geo.lng },
+                            zoom: 19,
+                            heading,
+                            tilt: clampedTilt
+                        });
+                        state.map.heading = heading;
+                        state.map.tilt = clampedTilt;
+                        state.map.center = { lat: geo.lat, lng: geo.lng };
+                        state.map.zoom = 19;
+                        persistMapView();
+                    }
+                } catch (orientationError) {
+                    console.warn('Impossibile calcolare orientamento camera:', orientationError);
+                    headingDisplay = 'n/d';
+                    tiltDisplay = 'n/d';
+                }
+
+                dom.resultHeading.textContent = headingDisplay;
+                dom.resultTilt.textContent = tiltDisplay;
+
+                const reprojectionError = computeReprojectionError(projectionMatrix, usable);
+                dom.resultReproj.textContent = `${reprojectionError.toFixed(2)} px`;
+                dom.resultsCard.style.display = 'grid';
+
+                pushStatus('Posa stimata. Verifica i valori e rifinisci le corrispondenze se necessario.', false);
+            }
+
+            function estimateProjectionMatrix(correspondences) {
+                const { Matrix, SVD } = window.mlMatrix;
+                const system = buildProjectionSystem(correspondences);
+                const A = Matrix.from1DArray(system.rows, system.cols, Array.from(system.data));
+                const svd = new SVD(A);
+                if (!svd || !svd.rightSingularVectors) {
+                    throw new Error('Decomposizione SVD non riuscita durante la stima della posa.');
+                }
+                const V = svd.rightSingularVectors;
+                const hVec = V.subMatrix(0, V.rows - 1, V.columns - 1, V.columns - 1);
+                const h = hVec.to1DArray();
+                return Matrix.from1DArray(3, 4, h);
+            }
+
+            function buildProjectionSystem(correspondences) {
+                const cols = 12;
+                const rows = correspondences.length * 2;
+                const data = new Float64Array(rows * cols);
+                let rowIndex = 0;
+
+                correspondences.forEach((entry) => {
+                    const { x, y } = entry.imagePoint;
+                    const { x: X, y: Y, z: Z } = entry.mapPoint.ecef;
+
+                    const baseRow = rowIndex * cols;
+                    data[baseRow + 0] = X;
+                    data[baseRow + 1] = Y;
+                    data[baseRow + 2] = Z;
+                    data[baseRow + 3] = 1;
+                    data[baseRow + 8] = -x * X;
+                    data[baseRow + 9] = -x * Y;
+                    data[baseRow + 10] = -x * Z;
+                    data[baseRow + 11] = -x;
+                    rowIndex += 1;
+
+                    const secondBase = rowIndex * cols;
+                    data[secondBase + 4] = X;
+                    data[secondBase + 5] = Y;
+                    data[secondBase + 6] = Z;
+                    data[secondBase + 7] = 1;
+                    data[secondBase + 8] = -y * X;
+                    data[secondBase + 9] = -y * Y;
+                    data[secondBase + 10] = -y * Z;
+                    data[secondBase + 11] = -y;
+                    rowIndex += 1;
+                });
+
+                return { rows, cols, data };
             }
 
             function computeReprojectionError(P, correspondences) {
