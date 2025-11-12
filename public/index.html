@@ -4,614 +4,59 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Image Localizator</title>
-    <style>
-        :root {
-            color-scheme: dark;
-            --bg: #0f172a;
-            --bg-panel: #111c3a;
-            --transform-bg: #1e293b;
-            --transform-border: #334155;
-            --bg-muted: #1e293b;
-            --accent: #38bdf8;
-            --warning: #f97316;
-            --danger: #f43f5e;
-            --text: #f8fafc;
-            --text-muted: #cbd5f5;
-            --border: #24345a;
-        }
+        <link rel="stylesheet" href="styles.css">
 
-        * {
-            box-sizing: border-box;
-        }
-
-        body {
-            margin: 0;
-            font-family: "Segoe UI", sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-
-        header {
-            padding: 1.25rem 2rem;
-            background: rgba(15, 23, 42, 0.9);
-            border-bottom: 1px solid var(--border);
-            display: flex;
-            flex-direction: column;
-            gap: 0.35rem;
-        }
-
-        header h1 {
-            margin: 0;
-            font-size: 1.5rem;
-            letter-spacing: 0.05em;
-        }
-
-        header p {
-            margin: 0;
-            color: var(--text-muted);
-            max-width: 64rem;
-        }
-
-        main {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            padding: 1.5rem 2rem 2.5rem;
-            gap: 1.5rem;
-        }
-
-        .panels {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 1.5rem;
-        }
-
-        .panel {
-            flex: 1 1 28rem;
-            display: flex;
-            flex-direction: column;
-            background: var(--bg-panel);
-            border: 1px solid var(--border);
-            border-radius: 1rem;
-            padding: 1.25rem;
-            gap: 1rem;
-            box-shadow: 0 8px 30px rgba(8, 25, 60, 0.35);
-        }
-
-        .panel h2 {
-            margin: 0;
-            font-size: 1.1rem;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .panel h2 span {
-            font-size: 0.85rem;
-            font-weight: 400;
-            color: var(--text-muted);
-        }
-
-        .upload-area {
-            border: 1px dashed var(--border);
-            border-radius: 0.75rem;
-            padding: 1rem;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 0.75rem;
-            background: rgba(30, 41, 59, 0.45);
-        }
-
-        .upload-area input[type="file"] {
-            display: none;
-        }
-
-        .upload-area label {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0.6rem 1.4rem;
-            border-radius: 999px;
-            border: 1px solid rgba(56, 189, 248, 0.4);
-            color: var(--accent);
-            cursor: pointer;
-            transition: background 0.2s ease, border-color 0.2s ease;
-        }
-
-        .upload-area label:hover {
-            background: rgba(56, 189, 248, 0.1);
-            border-color: var(--accent);
-        }
-
-        .image-container {
-            position: relative;
-            width: 100%;
-            background: #0b1120;
-            border-radius: 0.75rem;
-            border: 1px solid var(--border);
-            min-height: 22rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-        }
-
-        .image-container img {
-            max-width: 100%;
-            max-height: 32rem;
-            display: none;
-        }
-
-        .image-container canvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-            pointer-events: none;
-        }
-
-        .placeholder {
-            color: var(--text-muted);
-            text-align: center;
-            padding: 2rem;
-            max-width: 20rem;
-            line-height: 1.5;
-        }
-
-        .map-container {
-            position: relative;
-            width: 100%;
-            height: 32rem;
-            border-radius: 0.75rem;
-            border: 1px solid var(--border);
-            overflow: hidden;
-        }
-
-        #map {
-            width: 100%;
-            height: 100%;
-        }
-
-        .map-overlay {
-            position: absolute;
-            inset: 0;
-            background: rgba(15, 23, 42, 0.92);
-            display: none;
-            align-items: center;
-            justify-content: center;
-            padding: 1.5rem;
-            text-align: center;
-            color: var(--text);
-            z-index: 2;
-        }
-
-        .map-overlay.visible {
-            display: flex;
-        }
-
-        .map-overlay .overlay-card {
-            max-width: 28rem;
-            background: rgba(30, 41, 59, 0.9);
-            border: 1px solid rgba(59, 130, 246, 0.35);
-            border-radius: 0.85rem;
-            padding: 1.25rem;
-            display: grid;
-            gap: 0.8rem;
-        }
-
-        .map-overlay .overlay-card h3 {
-            margin: 0;
-            font-size: 1rem;
-            color: var(--accent);
-        }
-
-        .map-overlay .overlay-card p {
-            margin: 0;
-            font-size: 0.9rem;
-            color: var(--text-muted);
-            line-height: 1.5;
-        }
-
-        .map-overlay .overlay-card code {
-            background: rgba(148, 163, 184, 0.15);
-            border: 1px solid rgba(148, 163, 184, 0.3);
-            border-radius: 0.3rem;
-            padding: 0 0.35rem;
-            color: var(--text);
-        }
-
-        .overlay-form {
-            display: grid;
-            gap: 0.85rem;
-            margin-top: 0.5rem;
-        }
-
-        .overlay-field {
-            display: grid;
-            gap: 0.35rem;
-            text-align: left;
-            font-size: 0.85rem;
-            color: var(--text-muted);
-        }
-
-        .overlay-field input {
-            width: 100%;
-            padding: 0.5rem 0.75rem;
-            border-radius: 0.6rem;
-            border: 1px solid rgba(59, 130, 246, 0.4);
-            background: rgba(15, 23, 42, 0.6);
-            color: var(--text);
-            font-size: 0.9rem;
-        }
-
-        .overlay-field input:focus {
-            outline: none;
-            border-color: var(--accent);
-            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
-        }
-
-        .overlay-remember {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-size: 0.8rem;
-            color: var(--text-muted);
-        }
-
-        .overlay-actions {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.5rem;
-        }
-
-        .overlay-actions button {
-            padding: 0.6rem 1rem;
-            border-radius: 0.65rem;
-            border: 1px solid rgba(59, 130, 246, 0.35);
-            background: rgba(56, 189, 248, 0.12);
-            color: var(--accent);
-            cursor: pointer;
-            font-size: 0.85rem;
-        }
-
-        .overlay-actions button:hover {
-            background: rgba(56, 189, 248, 0.25);
-        }
-
-        .overlay-actions .btn-primary {
-            border: none;
-            color: var(--text);
-            background: linear-gradient(135deg, rgba(56, 189, 248, 0.85), rgba(59, 130, 246, 0.85));
-        }
-
-        .overlay-actions .btn-primary:hover {
-            background: linear-gradient(135deg, rgba(56, 189, 248, 0.95), rgba(59, 130, 246, 0.95));
-        }
-
-        .link-button {
-            background: transparent !important;
-            border: none !important;
-            color: var(--text-muted) !important;
-            text-decoration: underline;
-            padding-left: 0;
-        }
-
-        .overlay-error {
-            margin: 0;
-            font-size: 0.8rem;
-            color: var(--danger);
-        }
-
-        .legend {
-            display: flex;
-            gap: 1rem;
-            flex-wrap: wrap;
-            font-size: 0.8rem;
-            color: var(--text-muted);
-        }
-
-        .legend span {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.4rem;
-        }
-
-        .legend .dot {
-            width: 0.75rem;
-            height: 0.75rem;
-            border-radius: 999px;
-            display: inline-block;
-        }
-
-        .dot.image {
-            background: var(--accent);
-        }
-
-        .dot.pending {
-            background: var(--warning);
-        }
-
-        .controls-row {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.75rem;
-        }
-
-        .controls-row button {
-            border: none;
-            border-radius: 0.6rem;
-            padding: 0.6rem 1rem;
-            background: rgba(56, 189, 248, 0.18);
-            color: var(--accent);
-            font-size: 0.9rem;
-            cursor: pointer;
-            transition: background 0.2s ease;
-        }
-
-        .controls-row button:hover {
-            background: rgba(56, 189, 248, 0.3);
-        }
-
-        .badge {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 1.75rem;
-            height: 1.75rem;
-            border-radius: 0.5rem;
-            background: rgba(56, 189, 248, 0.12);
-            border: 1px solid rgba(56, 189, 248, 0.4);
-            color: var(--accent);
-            font-size: 0.85rem;
-            font-weight: 600;
-        }
-
-        .data-panel {
-            display: flex;
-            flex-direction: column;
-            gap: 1.25rem;
-            background: var(--bg-panel);
-            border: 1px solid var(--border);
-            border-radius: 1rem;
-            padding: 1.25rem;
-            box-shadow: 0 8px 30px rgba(8, 25, 60, 0.35);
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            border: 1px solid var(--border);
-            border-radius: 0.6rem;
-            overflow: hidden;
-        }
-
-        thead {
-            background: rgba(30, 41, 59, 0.8);
-        }
-
-        th, td {
-            padding: 0.65rem 0.85rem;
-            text-align: left;
-            border-bottom: 1px solid rgba(36, 52, 90, 0.6);
-            font-size: 0.85rem;
-        }
-
-        tbody tr:hover {
-            background: rgba(56, 189, 248, 0.06);
-        }
-
-        tbody tr:last-child td {
-            border-bottom: none;
-        }
-
-        .pending-map {
-            background: rgba(249, 115, 22, 0.15) !important;
-        }
-
-        .table-actions button {
-            padding: 0.35rem 0.6rem;
-            border-radius: 0.5rem;
-            border: 1px solid rgba(244, 63, 94, 0.4);
-            background: rgba(244, 63, 94, 0.12);
-            color: var(--danger);
-            font-size: 0.75rem;
-            cursor: pointer;
-        }
-
-        .table-actions button:hover {
-            background: rgba(244, 63, 94, 0.25);
-        }
-
-        .status-banner {
-            padding: 0.75rem 1rem;
-            border-radius: 0.75rem;
-            background: rgba(56, 189, 248, 0.12);
-            border: 1px solid rgba(56, 189, 248, 0.4);
-            color: var(--text);
-            font-size: 0.95rem;
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-        }
-
-        .status-banner strong {
-            color: var(--accent);
-        }
-
-        .secondary {
-            color: var(--text-muted);
-            font-size: 0.8rem;
-        }
-
-        .notice {
-            background: rgba(249, 115, 22, 0.15);
-            border: 1px solid rgba(249, 115, 22, 0.4);
-            padding: 0.5rem 0.75rem;
-            border-radius: 0.5rem;
-            font-size: 0.8rem;
-            line-height: 1.4;
-            color: #fcd34d;
-        }
-
-        input[type="number"] {
-            background: rgba(15, 23, 42, 0.6);
-            border: 1px solid rgba(56, 189, 248, 0.25);
-            border-radius: 0.5rem;
-            padding: 0.4rem 0.6rem;
-            color: var(--text);
-            width: 6rem;
-        }
-
-        input[type="number"]:focus {
-            outline: none;
-            border-color: var(--accent);
-            box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
-        }
-
-        .btn-primary {
-            padding: 0.75rem 1.5rem;
-            border-radius: 0.75rem;
-            border: none;
-            background: linear-gradient(135deg, rgba(56, 189, 248, 0.85), rgba(59, 130, 246, 0.85));
-            color: var(--text);
-            font-size: 0.95rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: transform 0.15s ease, box-shadow 0.15s ease;
-            align-self: flex-start;
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 10px 25px rgba(56, 189, 248, 0.2);
-        }
-
-        .results-card {
-            display: grid;
-            gap: 0.75rem;
-            background: rgba(15, 23, 42, 0.9);
-            border: 1px solid var(--border);
-            border-radius: 0.75rem;
-            padding: 1rem 1.25rem;
-        }
-
-        .results-card h3 {
-            margin: 0;
-            font-size: 1rem;
-            color: var(--accent);
-        }
-
-        .results-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
-            gap: 0.85rem;
-        }
-
-        .metric {
-            padding: 0.75rem;
-            border-radius: 0.6rem;
-            background: rgba(56, 189, 248, 0.08);
-            border: 1px solid rgba(56, 189, 248, 0.2);
-            display: grid;
-            gap: 0.35rem;
-        }
-
-        .metric span {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-        }
-
-        .metric strong {
-            font-size: 0.95rem;
-            letter-spacing: 0.02em;
-        }
-
-        .empty-state {
-            padding: 1rem;
-            border-radius: 0.75rem;
-            border: 1px dashed rgba(148, 163, 184, 0.35);
-            color: var(--text-muted);
-            text-align: center;
-        }
-
-        @media (max-width: 960px) {
-            header {
-                padding: 1.1rem 1.5rem;
-            }
-
-            main {
-                padding: 1.5rem;
-            }
-        }
-
-        .transform-panel {
-            background: var(--transform-bg);
-            border: 1px solid var(--transform-border);
-            border-radius: 8px;
-            padding: 1rem;
-            margin: 1rem 0;
-        }
-
-        .transform-panel h3 {
-            margin-top: 0;
-            margin-bottom: 1rem;
-            font-size: 1.1rem;
-            color: var(--accent);
-        }
-
-        .transform-panel h4 {
-            margin: 0.5rem 0;
-            font-size: 0.9rem;
-            color: #94a3b8;
-        }
-
-        .transform-controls {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 1rem;
-            margin-bottom: 1rem;
-        }
-
-        .transform-group {
-            background: rgba(15, 23, 42, 0.5);
-            border: 1px solid var(--transform-border);
-            border-radius: 6px;
-            padding: 0.75rem;
-        }
-
-        .transform-group label {
-            display: block;
-            margin: 0.5rem 0;
-            font-size: 0.9rem;
-        }
-
-        .transform-group input[type="number"] {
-            width: 60px;
-            padding: 0.25rem 0.5rem;
-            margin-left: 0.5rem;
-            background: #0f172a;
-            border: 1px solid #334155;
-            border-radius: 4px;
-            color: #e2e8f0;
-        }
-
-        #resetTransforms {
-            width: 100%;
-            margin-top: 0.5rem;
-        }
-    </style>
 </head>
 <body>
     <header>
-        <h1>Image Localizator</h1>
-        <p>
-            Carica un'immagine, allinea punti corrispondenti fra foto e mappa satellitare 3D e calcola una posa approssimata della fotocamera.
-            Configura un file <code>.env</code> con <code>GOOGLE_MAPS_API_KEY=</code> per abilitare il caricamento della mappa.
-        </p>
+        <div class="header-bar">
+            <div class="title-block">
+                <h1>Image Localizator</h1>
+                <p>
+                    Carica un'immagine, allinea punti corrispondenti fra foto e mappa satellitare 3D e calcola una posa approssimata della fotocamera.
+                    Configura un file <code>.env</code> con <code>GOOGLE_MAPS_API_KEY=</code> per abilitare il caricamento della mappa.
+                </p>
+            </div>
+            <div class="options-block">
+                <button class="options-trigger" id="themeButton" aria-haspopup="true" aria-expanded="false">
+                    Tema
+                    <span class="options-trigger__chevron" aria-hidden="true"></span>
+                </button>
+                <div class="theme-panel" id="themePanel" role="dialog" aria-labelledby="themePanelTitle" hidden>
+                    <div class="theme-panel__section theme-panel__header">
+                        <div>
+                            <h3 id="themePanelTitle">Personalizza tema</h3>
+                            <p>Scegli uno stile oppure crea una nuova combinazione di colori.</p>
+                        </div>
+                        <button type="button" class="theme-panel__close" id="themeClose" aria-label="Chiudi menu temi">&times;</button>
+                    </div>
+                    <div class="theme-panel__section">
+                        <h4>Temi predefiniti</h4>
+                        <div class="theme-chip-list" id="themePresetList"></div>
+                    </div>
+                    <div class="theme-panel__section">
+                        <div class="theme-panel__section-header">
+                            <h4>Temi personali</h4>
+                            <button type="button" class="text-button" id="clearCustomThemes" hidden>Elimina tutti</button>
+                        </div>
+                        <div class="theme-chip-list" id="customThemeList" data-empty-message="Nessun tema salvato." data-empty="true"></div>
+                    </div>
+                    <div class="theme-panel__section">
+                        <h4>Crea nuovo tema</h4>
+                        <form id="customThemeForm">
+                            <label class="theme-field">
+                                <span>Nome tema</span>
+                                <input type="text" id="customThemeName" maxlength="32" placeholder="Es. Tramonto urbano" required>
+                            </label>
+                            <div class="theme-field-grid" id="customThemeFields"></div>
+                            <div class="theme-form-actions">
+                                <button type="submit" class="btn-primary">Salva tema</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
     </header>
 
     <main>
@@ -796,6 +241,92 @@
         const ImageLocalizatorApp = (() => {
             'use strict';
 
+            const THEME_VARIABLES = [
+                { key: '--bg', label: 'Sfondo principale', defaultValue: '#0f172a' },
+                { key: '--bg-panel', label: 'Pannelli', defaultValue: '#111c3a' },
+                { key: '--bg-muted', label: 'Sfondo secondario', defaultValue: '#1e293b' },
+                { key: '--transform-bg', label: 'Carte trasformazioni', defaultValue: '#1e293b' },
+                { key: '--transform-border', label: 'Bordi trasformazioni', defaultValue: '#334155' },
+                { key: '--accent', label: 'Colore accento', defaultValue: '#38bdf8' },
+                { key: '--warning', label: 'Evidenziazione', defaultValue: '#f97316' },
+                { key: '--danger', label: 'Avvisi', defaultValue: '#f43f5e' },
+                { key: '--text', label: 'Testo principale', defaultValue: '#f8fafc' },
+                { key: '--text-muted', label: 'Testo secondario', defaultValue: '#cbd5f5' },
+                { key: '--border', label: 'Bordi', defaultValue: '#24345a' }
+            ];
+
+            const THEME_PRESETS = {
+                aurora: {
+                    label: 'Aurora',
+                    values: {
+                        '--bg': '#0f172a',
+                        '--bg-panel': '#111c3a',
+                        '--bg-muted': '#1e293b',
+                        '--transform-bg': '#1e293b',
+                        '--transform-border': '#334155',
+                        '--accent': '#38bdf8',
+                        '--warning': '#f97316',
+                        '--danger': '#f43f5e',
+                        '--text': '#f8fafc',
+                        '--text-muted': '#cbd5f5',
+                        '--border': '#24345a'
+                    }
+                },
+                dusk: {
+                    label: 'Tramonto',
+                    values: {
+                        '--bg': '#1a1035',
+                        '--bg-panel': '#271749',
+                        '--bg-muted': '#35225d',
+                        '--transform-bg': '#2c1d52',
+                        '--transform-border': '#4e2f7a',
+                        '--accent': '#ff9f43',
+                        '--warning': '#ff7b89',
+                        '--danger': '#f25d6f',
+                        '--text': '#fdf2f8',
+                        '--text-muted': '#f5c8ff',
+                        '--border': '#4a2d74'
+                    }
+                },
+                forest: {
+                    label: 'Foresta',
+                    values: {
+                        '--bg': '#0b1c17',
+                        '--bg-panel': '#142822',
+                        '--bg-muted': '#1c3a31',
+                        '--transform-bg': '#1f3f35',
+                        '--transform-border': '#285041',
+                        '--accent': '#34d399',
+                        '--warning': '#facc15',
+                        '--danger': '#f87171',
+                        '--text': '#ecfdf5',
+                        '--text-muted': '#a7f3d0',
+                        '--border': '#1f4b3c'
+                    }
+                },
+                graphite: {
+                    label: 'Grafite',
+                    values: {
+                        '--bg': '#0b0d10',
+                        '--bg-panel': '#14171c',
+                        '--bg-muted': '#1c2128',
+                        '--transform-bg': '#1f232b',
+                        '--transform-border': '#2d333d',
+                        '--accent': '#3b82f6',
+                        '--warning': '#fbbf24',
+                        '--danger': '#f87272',
+                        '--text': '#f3f4f6',
+                        '--text-muted': '#9ca3af',
+                        '--border': '#272b33'
+                    }
+                }
+            };
+
+            const STORAGE_KEYS = {
+                activeTheme: 'imageLocalizator.theme.active',
+                customThemes: 'imageLocalizator.theme.custom'
+            };
+
             const STORAGE_KEYS = {
                 credentials: 'image-localizator.mapsCredentials',
                 mapView: 'image-localizator.mapView'
@@ -863,6 +394,10 @@
                     mapId: null,
                     storageAvailable: false,
                     rememberCredentials: false
+                },
+                theme: {
+                    active: 'aurora',
+                    custom: {}
                 }
             };
 
@@ -904,6 +439,15 @@
                 dom.overlayClearStorage = document.getElementById('overlayClearStorage');
                 dom.overlayError = document.getElementById('overlayError');
                 dom.overlayMessage = document.getElementById('overlayMessage');
+                dom.themeButton = document.getElementById('themeButton');
+                dom.themePanel = document.getElementById('themePanel');
+                dom.themeClose = document.getElementById('themeClose');
+                dom.themePresetList = document.getElementById('themePresetList');
+                dom.customThemeList = document.getElementById('customThemeList');
+                dom.customThemeForm = document.getElementById('customThemeForm');
+                dom.customThemeFields = document.getElementById('customThemeFields');
+                dom.customThemeName = document.getElementById('customThemeName');
+                dom.clearCustomThemes = document.getElementById('clearCustomThemes');
             }
 
             function initializeStorage() {
@@ -915,6 +459,283 @@
                 } catch (error) {
                     state.config.storageAvailable = false;
                 }
+            }
+
+            function initializeThemeManager() {
+                if (!dom.themeButton || !dom.themePanel) {
+                    return;
+                }
+                buildCustomThemeFields();
+                if (state.config.storageAvailable) {
+                    state.theme.custom = loadCustomThemes();
+                    const storedActive = localStorage.getItem(STORAGE_KEYS.activeTheme);
+                    if (storedActive) {
+                        state.theme.active = storedActive;
+                    }
+                }
+                if (!getThemeDefinition(state.theme.active)) {
+                    state.theme.active = 'aurora';
+                }
+                applyTheme(state.theme.active);
+                dom.themeButton.addEventListener('click', toggleThemePanel);
+                dom.themeClose.addEventListener('click', () => closeThemePanel(true));
+                if (dom.themePresetList) {
+                    dom.themePresetList.addEventListener('click', handleThemeChipClick);
+                }
+                if (dom.customThemeList) {
+                    dom.customThemeList.addEventListener('click', handleThemeChipClick);
+                }
+                if (dom.customThemeForm) {
+                    dom.customThemeForm.addEventListener('submit', handleCustomThemeSubmit);
+                }
+                if (dom.clearCustomThemes) {
+                    dom.clearCustomThemes.addEventListener('click', clearAllCustomThemes);
+                }
+                document.addEventListener('click', handleThemeOutsideClick);
+                document.addEventListener('keydown', (event) => {
+                    if (event.key === 'Escape') {
+                        closeThemePanel();
+                    }
+                });
+            }
+
+            function buildCustomThemeFields() {
+                if (!dom.customThemeFields) {
+                    return;
+                }
+                dom.customThemeFields.innerHTML = '';
+                THEME_VARIABLES.forEach(({ key, label, defaultValue }) => {
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'theme-color-picker';
+                    const inputId = `theme-color-${key.replace(/^-+/, '')}`;
+                    wrapper.innerHTML = `
+                        <label for="${inputId}">${label}</label>
+                        <input type="color" id="${inputId}" data-variable="${key}" value="${defaultValue}">
+                    `;
+                    dom.customThemeFields.appendChild(wrapper);
+                });
+                populateCustomThemeFields();
+            }
+
+            function populateCustomThemeFields(values) {
+                if (!dom.customThemeFields) {
+                    return;
+                }
+                const themeValues = values || getThemeDefinition(state.theme.active)?.values || {};
+                THEME_VARIABLES.forEach(({ key, defaultValue }) => {
+                    const input = dom.customThemeFields.querySelector(`[data-variable="${key}"]`);
+                    if (!input) {
+                        return;
+                    }
+                    const value = (themeValues[key] || defaultValue || '#000000').trim();
+                    input.value = normalizeColor(value, defaultValue || '#000000');
+                });
+            }
+
+            function renderThemeLists() {
+                if (!dom.themePresetList || !dom.customThemeList) {
+                    return;
+                }
+                dom.themePresetList.innerHTML = '';
+                Object.entries(THEME_PRESETS).forEach(([name, definition]) => {
+                    dom.themePresetList.appendChild(createThemeChip(name, definition, false));
+                });
+                dom.customThemeList.innerHTML = '';
+                const customEntries = Object.entries(state.theme.custom);
+                customEntries.forEach(([name, definition]) => {
+                    dom.customThemeList.appendChild(createThemeChip(name, definition, true));
+                });
+                const isEmpty = customEntries.length === 0;
+                dom.customThemeList.dataset.empty = isEmpty ? 'true' : 'false';
+                if (dom.clearCustomThemes) {
+                    dom.clearCustomThemes.hidden = isEmpty;
+                }
+            }
+
+            function createThemeChip(name, definition, isCustom) {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'theme-chip';
+                wrapper.dataset.theme = name;
+                wrapper.dataset.active = state.theme.active === name ? 'true' : 'false';
+
+                const selectButton = document.createElement('button');
+                selectButton.type = 'button';
+                selectButton.className = 'theme-chip__select';
+                selectButton.dataset.themeSelect = name;
+                selectButton.textContent = definition.label || name;
+                wrapper.appendChild(selectButton);
+
+                if (isCustom) {
+                    const deleteButton = document.createElement('button');
+                    deleteButton.type = 'button';
+                    deleteButton.className = 'theme-chip__delete';
+                    deleteButton.dataset.themeDelete = name;
+                    deleteButton.setAttribute('aria-label', `Elimina il tema ${definition.label || name}`);
+                    deleteButton.textContent = '×';
+                    wrapper.appendChild(deleteButton);
+                }
+
+                return wrapper;
+            }
+
+            function handleThemeChipClick(event) {
+                const deleteBtn = event.target.closest('[data-theme-delete]');
+                if (deleteBtn) {
+                    const themeName = deleteBtn.dataset.themeDelete;
+                    delete state.theme.custom[themeName];
+                    saveCustomThemes();
+                    if (state.theme.active === themeName) {
+                        applyTheme('aurora');
+                    } else {
+                        renderThemeLists();
+                    }
+                    return;
+                }
+                const selectBtn = event.target.closest('[data-theme-select]');
+                if (selectBtn) {
+                    applyTheme(selectBtn.dataset.themeSelect);
+                    closeThemePanel();
+                }
+            }
+
+            function handleCustomThemeSubmit(event) {
+                event.preventDefault();
+                if (!dom.customThemeName) {
+                    return;
+                }
+                const label = dom.customThemeName.value.trim();
+                if (!label) {
+                    dom.customThemeName.focus();
+                    return;
+                }
+                const themeValues = {};
+                THEME_VARIABLES.forEach(({ key, defaultValue }) => {
+                    const input = dom.customThemeFields.querySelector(`[data-variable=\"${key}\"]`);
+                    themeValues[key] = (input?.value || defaultValue).trim();
+                });
+                const themeId = generateThemeId(label);
+                state.theme.custom[themeId] = { label, values: themeValues };
+                saveCustomThemes();
+                dom.customThemeForm.reset();
+                populateCustomThemeFields(themeValues);
+                renderThemeLists();
+                applyTheme(themeId);
+            }
+
+            function clearAllCustomThemes() {
+                if (!Object.keys(state.theme.custom).length) {
+                    return;
+                }
+                if (!confirm('Vuoi eliminare tutti i temi personalizzati?')) {
+                    return;
+                }
+                state.theme.custom = {};
+                saveCustomThemes();
+                renderThemeLists();
+            }
+
+            function toggleThemePanel() {
+                if (!dom.themePanel) {
+                    return;
+                }
+                const isHidden = dom.themePanel.hasAttribute('hidden');
+                setThemePanelVisibility(isHidden);
+            }
+
+            function closeThemePanel(focusButton = false) {
+                setThemePanelVisibility(false, focusButton);
+            }
+
+            function setThemePanelVisibility(isVisible, focusButton = false) {
+                if (!dom.themePanel || !dom.themeButton) {
+                    return;
+                }
+                if (isVisible) {
+                    dom.themePanel.hidden = false;
+                    dom.themePanel.classList.add('theme-panel--open');
+                    dom.themeButton.setAttribute('aria-expanded', 'true');
+                    populateCustomThemeFields();
+                } else {
+                    dom.themePanel.hidden = true;
+                    dom.themePanel.classList.remove('theme-panel--open');
+                    dom.themeButton.setAttribute('aria-expanded', 'false');
+                    if (focusButton) {
+                        dom.themeButton.focus();
+                    }
+                }
+            }
+
+            function handleThemeOutsideClick(event) {
+                if (!dom.themePanel || dom.themePanel.hidden) {
+                    return;
+                }
+                const clickInsidePanel = dom.themePanel.contains(event.target);
+                const clickOnButton = dom.themeButton?.contains(event.target);
+                if (!clickInsidePanel && !clickOnButton) {
+                    closeThemePanel();
+                }
+            }
+
+            function applyTheme(themeName) {
+                const themeDefinition = getThemeDefinition(themeName);
+                if (!themeDefinition) {
+                    return;
+                }
+                Object.entries(themeDefinition.values).forEach(([variable, value]) => {
+                    document.documentElement.style.setProperty(variable, value);
+                });
+                state.theme.active = themeName;
+                if (state.config.storageAvailable) {
+                    localStorage.setItem(STORAGE_KEYS.activeTheme, themeName);
+                }
+                renderThemeLists();
+                populateCustomThemeFields(themeDefinition.values);
+            }
+
+            function getThemeDefinition(name) {
+                return THEME_PRESETS[name] || state.theme.custom[name] || null;
+            }
+
+            function saveCustomThemes() {
+                if (!state.config.storageAvailable) {
+                    return;
+                }
+                localStorage.setItem(STORAGE_KEYS.customThemes, JSON.stringify(state.theme.custom));
+            }
+
+            function loadCustomThemes() {
+                if (!state.config.storageAvailable) {
+                    return {};
+                }
+                try {
+                    const stored = localStorage.getItem(STORAGE_KEYS.customThemes);
+                    return stored ? JSON.parse(stored) : {};
+                } catch (error) {
+                    return {};
+                }
+            }
+
+            function normalizeColor(value, fallback) {
+                const trimmed = (value || '').trim();
+                if (trimmed.startsWith('#') && (trimmed.length === 7 || trimmed.length === 4)) {
+                    return trimmed.length === 4
+                        ? `#${trimmed[1]}${trimmed[1]}${trimmed[2]}${trimmed[2]}${trimmed[3]}${trimmed[3]}`
+                        : trimmed;
+                }
+                return fallback || '#000000';
+            }
+
+            function generateThemeId(label) {
+                const base = label
+                    .toLowerCase()
+                    .replace(/[^a-z0-9]+/g, '-')
+                    .replace(/^-+|-+$/g, '') || 'tema';
+                let candidate = base;
+                let counter = 1;
+                while (THEME_PRESETS[candidate] || state.theme.custom[candidate]) {
+                    candidate = `${base}-${counter++}`;
+                }
+                return candidate;
             }
 
             function setupOverlayHandlers() {
@@ -1210,6 +1031,7 @@
 
                 cacheDom();
                 initializeStorage();
+                initializeThemeManager();
                 initializeMapConfiguration();
                 setupOverlayHandlers();
                 hydrateConfigurationFromStorage();
