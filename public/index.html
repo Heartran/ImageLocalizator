@@ -447,6 +447,14 @@
                 dom.clearCustomThemes = document.getElementById('clearCustomThemes');
             }
 
+            function safeAddEventListener(element, eventName, handler) {
+                if (element && typeof element.addEventListener === 'function') {
+                    element.addEventListener(eventName, handler);
+                    return true;
+                }
+                return false;
+            }
+
             function initializeStorage() {
                 try {
                     const testKey = '__image_localizator__';
@@ -474,20 +482,12 @@
                     state.theme.active = 'aurora';
                 }
                 applyTheme(state.theme.active);
-                dom.themeButton.addEventListener('click', toggleThemePanel);
-                dom.themeClose.addEventListener('click', () => closeThemePanel(true));
-                if (dom.themePresetList) {
-                    dom.themePresetList.addEventListener('click', handleThemeChipClick);
-                }
-                if (dom.customThemeList) {
-                    dom.customThemeList.addEventListener('click', handleThemeChipClick);
-                }
-                if (dom.customThemeForm) {
-                    dom.customThemeForm.addEventListener('submit', handleCustomThemeSubmit);
-                }
-                if (dom.clearCustomThemes) {
-                    dom.clearCustomThemes.addEventListener('click', clearAllCustomThemes);
-                }
+                safeAddEventListener(dom.themeButton, 'click', toggleThemePanel);
+                safeAddEventListener(dom.themeClose, 'click', () => closeThemePanel(true));
+                safeAddEventListener(dom.themePresetList, 'click', handleThemeChipClick);
+                safeAddEventListener(dom.customThemeList, 'click', handleThemeChipClick);
+                safeAddEventListener(dom.customThemeForm, 'submit', handleCustomThemeSubmit);
+                safeAddEventListener(dom.clearCustomThemes, 'click', clearAllCustomThemes);
                 document.addEventListener('click', handleThemeOutsideClick);
                 document.addEventListener('keydown', (event) => {
                     if (event.key === 'Escape') {
@@ -1038,18 +1038,18 @@
                 state.image.overlay = dom.overlay;
                 state.image.overlayCtx = dom.overlay.getContext('2d');
 
-                dom.imageInput.addEventListener('change', handleImageSelection);
-                dom.imageWrapper.addEventListener('click', handleImageClick);
-                dom.clearImagePoints.addEventListener('click', clearImagePoints);
-                dom.fitImage.addEventListener('click', () => fitImageToContainer(true));
-                dom.matchesBody.addEventListener('click', handleTableClick);
-                dom.matchesBody.addEventListener('change', handleTableChange);
-                dom.solveButton.addEventListener('click', computeCameraPose);
-                dom.tiltIncrease.addEventListener('click', () => adjustTilt(state.map.tiltStep));
-                dom.tiltDecrease.addEventListener('click', () => adjustTilt(-state.map.tiltStep));
-                dom.headingLeft.addEventListener('click', () => adjustHeading(-state.map.headingStep));
-                dom.headingRight.addEventListener('click', () => adjustHeading(state.map.headingStep));
-                dom.resetView.addEventListener('click', resetMapView);
+                safeAddEventListener(dom.imageInput, 'change', handleImageSelection);
+                safeAddEventListener(dom.imageWrapper, 'click', handleImageClick);
+                safeAddEventListener(dom.clearImagePoints, 'click', clearImagePoints);
+                safeAddEventListener(dom.fitImage, 'click', () => fitImageToContainer(true));
+                safeAddEventListener(dom.matchesBody, 'click', handleTableClick);
+                safeAddEventListener(dom.matchesBody, 'change', handleTableChange);
+                safeAddEventListener(dom.solveButton, 'click', computeCameraPose);
+                safeAddEventListener(dom.tiltIncrease, 'click', () => adjustTilt(state.map.tiltStep));
+                safeAddEventListener(dom.tiltDecrease, 'click', () => adjustTilt(-state.map.tiltStep));
+                safeAddEventListener(dom.headingLeft, 'click', () => adjustHeading(-state.map.headingStep));
+                safeAddEventListener(dom.headingRight, 'click', () => adjustHeading(state.map.headingStep));
+                safeAddEventListener(dom.resetView, 'click', resetMapView);
                 window.addEventListener('resize', syncOverlaySize);
 
                 state.image.element.addEventListener('load', () => {
@@ -1513,11 +1513,16 @@
             }
 
             async function readEnvFile() {
-                const response = await fetch('.env', { cache: 'no-store' });
-                if (!response.ok) {
-                    throw new Error(`Impossibile caricare .env (HTTP ${response.status})`);
+                try {
+                    const response = await fetch('.env', { cache: 'no-store' });
+                    if (!response.ok) {
+                        return '';
+                    }
+                    return response.text();
+                } catch (error) {
+                    console.warn('Impossibile leggere .env: proseguo senza file locale.', error);
+                    return '';
                 }
-                return response.text();
             }
 
             function parseEnv(content) {
