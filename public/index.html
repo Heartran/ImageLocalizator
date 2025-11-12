@@ -1,2150 +1,1000 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="it">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Image Localizator</title>
-        <link rel="stylesheet" href="styles.css">
-
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Image Localizator</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
 </head>
 <body>
-    <header>
-        <div class="header-bar">
-            <div class="title-block">
-                <h1>Image Localizator</h1>
-                <p>
-                    Carica un'immagine, allinea punti corrispondenti fra foto e mappa satellitare 3D e calcola una posa approssimata della fotocamera.
-                    Configura un file <code>.env</code> con <code>GOOGLE_MAPS_API_KEY=</code> per abilitare il caricamento della mappa.
-                </p>
+  <header>
+    <div class="header-bar">
+      <div class="title-block">
+        <h1>Image Localizator</h1>
+        <p>Carica un'immagine, abbina punti tra foto e mappa OpenStreetMap in 3D (OSM Buildings), poi calcola la posa approssimata della fotocamera con il modello DLT.</p>
+      </div>
+      <div class="options-block">
+        <button class="options-trigger" id="themeButton" aria-haspopup="true" aria-expanded="false">
+          Tema <span class="options-trigger__chevron" aria-hidden="true"></span>
+        </button>
+        <div class="theme-panel" id="themePanel" role="dialog" aria-labelledby="themePanelTitle" hidden>
+          <div class="theme-panel__section theme-panel__header">
+            <div>
+              <h3 id="themePanelTitle">Personalizza tema</h3>
+              <p>Scegli uno stile oppure crea una nuova combinazione di colori.</p>
             </div>
-            <div class="options-block">
-                <button class="options-trigger" id="themeButton" aria-haspopup="true" aria-expanded="false">
-                    Tema
-                    <span class="options-trigger__chevron" aria-hidden="true"></span>
-                </button>
-                <div class="theme-panel" id="themePanel" role="dialog" aria-labelledby="themePanelTitle" hidden>
-                    <div class="theme-panel__section theme-panel__header">
-                        <div>
-                            <h3 id="themePanelTitle">Personalizza tema</h3>
-                            <p>Scegli uno stile oppure crea una nuova combinazione di colori.</p>
-                        </div>
-                        <button type="button" class="theme-panel__close" id="themeClose" aria-label="Chiudi menu temi">&times;</button>
-                    </div>
-                    <div class="theme-panel__section">
-                        <h4>Temi predefiniti</h4>
-                        <div class="theme-chip-list" id="themePresetList"></div>
-                    </div>
-                    <div class="theme-panel__section">
-                        <div class="theme-panel__section-header">
-                            <h4>Temi personali</h4>
-                            <button type="button" class="text-button" id="clearCustomThemes" hidden>Elimina tutti</button>
-                        </div>
-                        <div class="theme-chip-list" id="customThemeList" data-empty-message="Nessun tema salvato." data-empty="true"></div>
-                    </div>
-                    <div class="theme-panel__section">
-                        <h4>Crea nuovo tema</h4>
-                        <form id="customThemeForm">
-                            <label class="theme-field">
-                                <span>Nome tema</span>
-                                <input type="text" id="customThemeName" maxlength="32" placeholder="Es. Tramonto urbano" required>
-                            </label>
-                            <div class="theme-field-grid" id="customThemeFields"></div>
-                            <div class="theme-form-actions">
-                                <button type="submit" class="btn-primary">Salva tema</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
+            <button type="button" class="theme-panel__close" id="themeClose" aria-label="Chiudi menu temi">&times;</button>
+          </div>
+          <div class="theme-panel__section">
+            <h4>Temi predefiniti</h4>
+            <div class="theme-chip-list" id="themePresetList"></div>
+          </div>
+          <div class="theme-panel__section">
+            <div class="theme-panel__section-header">
+              <h4>Temi personali</h4>
+              <button type="button" class="text-button" id="clearCustomThemes" hidden>Elimina tutti</button>
             </div>
+            <div class="theme-chip-list" id="customThemeList" data-empty-message="Nessun tema salvato." data-empty="true"></div>
+          </div>
+          <div class="theme-panel__section">
+            <h4>Crea nuovo tema</h4>
+            <form id="customThemeForm">
+              <label class="theme-field">
+                <span>Nome tema</span>
+                <input type="text" id="customThemeName" maxlength="32" placeholder="Es. Tramonto urbano" required />
+              </label>
+              <div class="theme-field-grid" id="customThemeFields"></div>
+              <div class="theme-form-actions">
+                <button type="submit" class="btn-primary">Salva tema</button>
+              </div>
+            </form>
+          </div>
         </div>
-    </header>
-
-    <main>
-        <section class="status-banner" id="statusBanner">
-            <strong>Pronto:</strong>
-            <span id="statusMessage">carica una foto e fai clic per iniziare a creare corrispondenze 2D ↔ 3D.</span>
-        </section>
-
-        <section class="panels">
-            <div class="panel image-panel">
-                <h2>Foto di riferimento <span>(2D)</span></h2>
-                <div class="upload-area">
-                    <label for="imageInput">Carica immagine...</label>
-                    <input type="file" id="imageInput" accept="image/*">
-                    <div class="notice">
-                        Clicca su punti ben riconoscibili della foto. Per ognuno dovrai aggiungere il punto corrispondente sulla mappa.
-                    </div>
-                </div>
-                <div class="legend">
-                    <span><span class="dot image"></span> Punto collegato</span>
-                    <span><span class="dot pending"></span> In attesa del punto mappa</span>
-                </div>
-                <div class="image-container" id="imageWrapper">
-                    <img id="photo" alt="Foto di riferimento">
-                    <canvas id="photoOverlay"></canvas>
-                    <div class="placeholder" id="photoPlaceholder">
-                        Carica un'immagine dell'area da localizzare. Clicca sulla foto per aggiungere i punti di riferimento.
-                    </div>
-                </div>
-                <div class="controls-row">
-                    <button id="clearImagePoints">Cancella punti foto</button>
-                    <button id="fitImage">Adatta immagine</button>
-                </div>
-            </div>
-
-            <div class="panel map-panel">
-                <h2>Mappa satellitare <span>(3D)</span></h2>
-                <div
-                    class="map-container"
-                    id="mapContainer"
-                    data-center-lat="48.85837"
-                    data-center-lng="2.29448"
-                    data-zoom="18"
-                    data-tilt="60"
-                    data-heading="0"
-                    data-tilt-step="5"
-                    data-heading-step="10"
-                >
-                    <div id="map"></div>
-                    <div class="map-overlay" id="mapOverlay">
-                        <div class="overlay-card">
-                            <h3>Mappa 3D non disponibile</h3>
-                            <p id="overlayMessage">
-                                Per utilizzare la vista 3D inserisci di seguito una API key valida e il relativo Map ID
-                                oppure assicurati che siano presenti nel file <code>.env</code>.
-                            </p>
-                            <form id="overlayConfigForm" class="overlay-form">
-                                <label class="overlay-field">
-                                    <span>Google Maps API key</span>
-                                    <input type="text" id="overlayApiKey" autocomplete="off" placeholder="AIza..." required>
-                                </label>
-                                <label class="overlay-field">
-                                    <span>Google Maps Map ID</span>
-                                    <input type="text" id="overlayMapId" autocomplete="off" placeholder="xxxxxxxxxxxxxxxx" required>
-                                </label>
-                                <label class="overlay-remember">
-                                    <input type="checkbox" id="overlayRemember"> Ricorda questi valori nel browser
-                                </label>
-                                <div class="overlay-actions">
-                                    <button type="submit" class="btn-primary">Carica mappa</button>
-                                    <button type="button" id="overlayReloadEnv">Riprova lettura .env</button>
-                                    <button type="button" id="overlayClearStorage" class="link-button">Dimentica dati salvati</button>
-                                </div>
-                                <p class="overlay-error" id="overlayError" role="alert" hidden></p>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-                <div class="notice">
-                    Dopo aver cliccato sulla foto, posiziona qui il punto corrispondente. I marker sono trascinabili; puoi aggiornare manualmente l'altitudine in tabella.
-                </div>
-                <div class="controls-row">
-                    <button id="tiltIncrease">Aumenta tilt</button>
-                    <button id="tiltDecrease">Riduci tilt</button>
-                    <button id="headingLeft">Ruota sinistra</button>
-                    <button id="headingRight">Ruota destra</button>
-                    <button id="resetView">Reset vista</button>
-                </div>
-            </div>
-        </section>
-
-        <section class="data-panel">
-            <h2>Associazioni 2D ↔ 3D</h2>
-            <div class="empty-state" id="emptyState">
-                Servono almeno 6 corrispondenze complete per stimare la posizione della telecamera.
-            </div>
-            <div class="table-container">
-                <table id="correspondenceTable">
-                    <thead>
-                        <tr>
-                            <th>#</th>
-                            <th>Immagine (x, y)</th>
-                            <th>Mappa (lat, lng, alt)</th>
-                            <th>Azioni</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <!-- Le righe verranno aggiunte dinamicamente -->
-                    </tbody>
-                </table>
-            </div>
-            
-            <div class="transform-panel">
-                <h3>Trasformazioni Assi 3D</h3>
-                <div class="transform-controls">
-                    <div class="transform-group">
-                        <h4>Traslazione</h4>
-                        <label>X: <input type="number" id="transform-translateX" data-transform="translateX" step="0.1"></label>
-                        <label>Y: <input type="number" id="transform-translateY" data-transform="translateY" step="0.1"></label>
-                        <label>Z: <input type="number" id="transform-translateZ" data-transform="translateZ" step="0.1"></label>
-                    </div>
-                    
-                    <div class="transform-group">
-                        <h4>Scala</h4>
-                        <label>X: <input type="number" id="transform-scaleX" data-transform="scaleX" step="0.1" value="1"></label>
-                        <label>Y: <input type="number" id="transform-scaleY" data-transform="scaleY" step="0.1" value="1"></label>
-                        <label>Z: <input type="number" id="transform-scaleZ" data-transform="scaleZ" step="0.1" value="1"></label>
-                    </div>
-                    
-                    <div class="transform-group">
-                        <h4>Rotazione (°)</h4>
-                        <label>X: <input type="number" id="transform-rotateX" data-transform="rotateX" step="1"></label>
-                        <label>Y: <input type="number" id="transform-rotateY" data-transform="rotateY" step="1"></label>
-                        <label>Z: <input type="number" id="transform-rotateZ" data-transform="rotateZ" step="1"></label>
-                    </div>
-                </div>
-                <button id="resetTransforms" class="button button-secondary">Reimposta trasformazioni</button>
-            </div>
-            
-            <div class="button-group">
-                <button id="clearPoints" class="button button-secondary">Pulisci punti</button>
-                <button id="computePose" class="button button-primary" disabled>Calcola posa</button>
-                <button id="exportData" class="button">Esporta dati</button>
-                <button id="importData" class="button">Importa dati</button>
-                <input type="file" id="importFile" accept=".json" style="display: none;">
-            </div>
-        </section>
-
-        <section class="results-panel">
-            <h2>Risultati stimati</h2>
-            <div class="results-grid">
-                <div class="metric">
-                    <span>Latitudine</span>
-                    <strong id="resultLat">-</strong>
-                </div>
-                <div class="metric">
-                    <span>Longitudine</span>
-                    <strong id="resultLng">-</strong>
-                </div>
-                <div class="metric">
-                    <span>Altitudine</span>
-                    <strong id="resultAlt">-</strong>
-                </div>
-                <div class="metric">
-                    <span>Heading stimato</span>
-                    <strong id="resultHeading">-</strong>
-                </div>
-                <div class="metric">
-                    <span>Tilt stimato</span>
-                    <strong id="resultTilt">-</strong>
-                </div>
-                <div class="metric">
-                    <span>Errore medio di reproiezione</span>
-                    <strong id="resultReproj">-</strong>
-                </div>
-            </div>
-        </section>
-    </main>
-
-    <script src="https://cdn.jsdelivr.net/npm/ml-matrix@6.10.4/matrix.umd.js" defer></script>
-    <script>
-        const ImageLocalizatorApp = (() => {
-            'use strict';
-
-            const THEME_VARIABLES = [
-                { key: '--bg', label: 'Sfondo principale', defaultValue: '#0f172a' },
-                { key: '--bg-panel', label: 'Pannelli', defaultValue: '#111c3a' },
-                { key: '--bg-muted', label: 'Sfondo secondario', defaultValue: '#1e293b' },
-                { key: '--transform-bg', label: 'Carte trasformazioni', defaultValue: '#1e293b' },
-                { key: '--transform-border', label: 'Bordi trasformazioni', defaultValue: '#334155' },
-                { key: '--accent', label: 'Colore accento', defaultValue: '#38bdf8' },
-                { key: '--warning', label: 'Evidenziazione', defaultValue: '#f97316' },
-                { key: '--danger', label: 'Avvisi', defaultValue: '#f43f5e' },
-                { key: '--text', label: 'Testo principale', defaultValue: '#f8fafc' },
-                { key: '--text-muted', label: 'Testo secondario', defaultValue: '#cbd5f5' },
-                { key: '--border', label: 'Bordi', defaultValue: '#24345a' }
-            ];
-
-            const THEME_PRESETS = {
-                aurora: {
-                    label: 'Aurora',
-                    values: {
-                        '--bg': '#0f172a',
-                        '--bg-panel': '#111c3a',
-                        '--bg-muted': '#1e293b',
-                        '--transform-bg': '#1e293b',
-                        '--transform-border': '#334155',
-                        '--accent': '#38bdf8',
-                        '--warning': '#f97316',
-                        '--danger': '#f43f5e',
-                        '--text': '#f8fafc',
-                        '--text-muted': '#cbd5f5',
-                        '--border': '#24345a'
-                    }
-                },
-                dusk: {
-                    label: 'Tramonto',
-                    values: {
-                        '--bg': '#1a1035',
-                        '--bg-panel': '#271749',
-                        '--bg-muted': '#35225d',
-                        '--transform-bg': '#2c1d52',
-                        '--transform-border': '#4e2f7a',
-                        '--accent': '#ff9f43',
-                        '--warning': '#ff7b89',
-                        '--danger': '#f25d6f',
-                        '--text': '#fdf2f8',
-                        '--text-muted': '#f5c8ff',
-                        '--border': '#4a2d74'
-                    }
-                },
-                forest: {
-                    label: 'Foresta',
-                    values: {
-                        '--bg': '#0b1c17',
-                        '--bg-panel': '#142822',
-                        '--bg-muted': '#1c3a31',
-                        '--transform-bg': '#1f3f35',
-                        '--transform-border': '#285041',
-                        '--accent': '#34d399',
-                        '--warning': '#facc15',
-                        '--danger': '#f87171',
-                        '--text': '#ecfdf5',
-                        '--text-muted': '#a7f3d0',
-                        '--border': '#1f4b3c'
-                    }
-                },
-                graphite: {
-                    label: 'Grafite',
-                    values: {
-                        '--bg': '#0b0d10',
-                        '--bg-panel': '#14171c',
-                        '--bg-muted': '#1c2128',
-                        '--transform-bg': '#1f232b',
-                        '--transform-border': '#2d333d',
-                        '--accent': '#3b82f6',
-                        '--warning': '#fbbf24',
-                        '--danger': '#f87272',
-                        '--text': '#f3f4f6',
-                        '--text-muted': '#9ca3af',
-                        '--border': '#272b33'
-                    }
-                }
-            };
-
-            const STORAGE_KEYS = {
-                activeTheme: 'imageLocalizator.theme.active',
-                customThemes: 'imageLocalizator.theme.custom',
-                credentials: 'image-localizator.mapsCredentials',
-                mapView: 'image-localizator.mapView'
-            };
-
-            const ALTITUDE_LIMITS = {
-                min: -1000,
-                max: 10000
-            };
-
-            const GOOGLE_MAX_TILT = 67.5;
-
-            const ALLOWED_IMAGE_TYPES = new Set([
-                'image/jpeg',
-                'image/png',
-                'image/webp',
-                'image/gif',
-                'image/bmp',
-                'image/heic',
-                'image/heif'
-            ]);
-
-            const ALLOWED_IMAGE_EXTENSIONS = new Set([
-                'jpg',
-                'jpeg',
-                'png',
-                'webp',
-                'gif',
-                'bmp',
-                'heic',
-                'heif',
-                'tif',
-                'tiff'
-            ]);
-
-            const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
-
-            const state = {
-                correspondences: [],
-                nextId: 1,
-                pending: null,
-                image: {
-                    element: null,
-                    overlay: null,
-                    overlayCtx: null,
-                    naturalWidth: 0,
-                    naturalHeight: 0,
-                    objectUrl: null
-                },
-                map: {
-                    instance: null,
-                    tilt: 60,
-                    heading: 0,
-                    zoom: 18,
-                    center: null,
-                    tiltStep: 5,
-                    headingStep: 10,
-                    viewDefaults: null,
-                    preferredView: null,
-                    elevationService: null
-                },
-                config: {
-                    envLoaded: false,
-                    mapsKey: null,
-                    mapId: null,
-                    storageAvailable: false,
-                    rememberCredentials: false
-                },
-                theme: {
-                    active: 'aurora',
-                    custom: {}
-                }
-            };
-
-            const dom = {};
-
-            function cacheDom() {
-                dom.imageInput = document.getElementById('imageInput');
-                dom.imageWrapper = document.getElementById('imageWrapper');
-                dom.photo = document.getElementById('photo');
-                dom.overlay = document.getElementById('photoOverlay');
-                dom.placeholder = document.getElementById('photoPlaceholder');
-                dom.clearImagePoints = document.getElementById('clearImagePoints');
-                dom.fitImage = document.getElementById('fitImage');
-                dom.statusBanner = document.getElementById('statusBanner');
-                dom.statusMessage = document.getElementById('statusMessage');
-                dom.matchesTable = document.getElementById('matchesTable');
-                dom.matchesBody = document.getElementById('matchesBody');
-                dom.emptyState = document.getElementById('emptyState');
-                dom.solveButton = document.getElementById('solveButton');
-                dom.resultsCard = document.getElementById('resultsCard');
-                dom.resultLat = document.getElementById('resultLat');
-                dom.resultLng = document.getElementById('resultLng');
-                dom.resultAlt = document.getElementById('resultAlt');
-                dom.resultHeading = document.getElementById('resultHeading');
-                dom.resultTilt = document.getElementById('resultTilt');
-                dom.resultReproj = document.getElementById('resultReproj');
-                dom.tiltIncrease = document.getElementById('tiltIncrease');
-                dom.tiltDecrease = document.getElementById('tiltDecrease');
-                dom.headingLeft = document.getElementById('headingLeft');
-                dom.headingRight = document.getElementById('headingRight');
-                dom.resetView = document.getElementById('resetView');
-                dom.mapContainer = document.getElementById('mapContainer');
-                dom.mapOverlay = document.getElementById('mapOverlay');
-                dom.overlayForm = document.getElementById('overlayConfigForm');
-                dom.overlayApiKey = document.getElementById('overlayApiKey');
-                dom.overlayMapId = document.getElementById('overlayMapId');
-                dom.overlayRemember = document.getElementById('overlayRemember');
-                dom.overlayReloadEnv = document.getElementById('overlayReloadEnv');
-                dom.overlayClearStorage = document.getElementById('overlayClearStorage');
-                dom.overlayError = document.getElementById('overlayError');
-                dom.overlayMessage = document.getElementById('overlayMessage');
-                dom.themeButton = document.getElementById('themeButton');
-                dom.themePanel = document.getElementById('themePanel');
-                dom.themeClose = document.getElementById('themeClose');
-                dom.themePresetList = document.getElementById('themePresetList');
-                dom.customThemeList = document.getElementById('customThemeList');
-                dom.customThemeForm = document.getElementById('customThemeForm');
-                dom.customThemeFields = document.getElementById('customThemeFields');
-                dom.customThemeName = document.getElementById('customThemeName');
-                dom.clearCustomThemes = document.getElementById('clearCustomThemes');
-            }
-
-            function safeAddEventListener(element, eventName, handler) {
-                if (element && typeof element.addEventListener === 'function') {
-                    element.addEventListener(eventName, handler);
-                    return true;
-                }
-                return false;
-            }
-
-            function initializeStorage() {
-                try {
-                    const testKey = '__image_localizator__';
-                    localStorage.setItem(testKey, '1');
-                    localStorage.removeItem(testKey);
-                    state.config.storageAvailable = true;
-                } catch (error) {
-                    state.config.storageAvailable = false;
-                }
-            }
-
-            function initializeThemeManager() {
-                if (!dom.themeButton || !dom.themePanel) {
-                    return;
-                }
-                buildCustomThemeFields();
-                if (state.config.storageAvailable) {
-                    state.theme.custom = loadCustomThemes();
-                    const storedActive = localStorage.getItem(STORAGE_KEYS.activeTheme);
-                    if (storedActive) {
-                        state.theme.active = storedActive;
-                    }
-                }
-                if (!getThemeDefinition(state.theme.active)) {
-                    state.theme.active = 'aurora';
-                }
-                applyTheme(state.theme.active);
-                safeAddEventListener(dom.themeButton, 'click', toggleThemePanel);
-                safeAddEventListener(dom.themeClose, 'click', () => closeThemePanel(true));
-                safeAddEventListener(dom.themePresetList, 'click', handleThemeChipClick);
-                safeAddEventListener(dom.customThemeList, 'click', handleThemeChipClick);
-                safeAddEventListener(dom.customThemeForm, 'submit', handleCustomThemeSubmit);
-                safeAddEventListener(dom.clearCustomThemes, 'click', clearAllCustomThemes);
-                document.addEventListener('click', handleThemeOutsideClick);
-                document.addEventListener('keydown', (event) => {
-                    if (event.key === 'Escape') {
-                        closeThemePanel();
-                    }
-                });
-            }
-
-            function buildCustomThemeFields() {
-                if (!dom.customThemeFields) {
-                    return;
-                }
-                dom.customThemeFields.innerHTML = '';
-                THEME_VARIABLES.forEach(({ key, label, defaultValue }) => {
-                    const wrapper = document.createElement('div');
-                    wrapper.className = 'theme-color-picker';
-                    const inputId = `theme-color-${key.replace(/^-+/, '')}`;
-                    wrapper.innerHTML = `
-                        <label for="${inputId}">${label}</label>
-                        <input type="color" id="${inputId}" data-variable="${key}" value="${defaultValue}">
-                    `;
-                    dom.customThemeFields.appendChild(wrapper);
-                });
-                populateCustomThemeFields();
-            }
-
-            function populateCustomThemeFields(values) {
-                if (!dom.customThemeFields) {
-                    return;
-                }
-                const themeValues = values || getThemeDefinition(state.theme.active)?.values || {};
-                THEME_VARIABLES.forEach(({ key, defaultValue }) => {
-                    const input = dom.customThemeFields.querySelector(`[data-variable="${key}"]`);
-                    if (!input) {
-                        return;
-                    }
-                    const value = (themeValues[key] || defaultValue || '#000000').trim();
-                    input.value = normalizeColor(value, defaultValue || '#000000');
-                });
-            }
-
-            function renderThemeLists() {
-                if (!dom.themePresetList || !dom.customThemeList) {
-                    return;
-                }
-                dom.themePresetList.innerHTML = '';
-                Object.entries(THEME_PRESETS).forEach(([name, definition]) => {
-                    dom.themePresetList.appendChild(createThemeChip(name, definition, false));
-                });
-                dom.customThemeList.innerHTML = '';
-                const customEntries = Object.entries(state.theme.custom);
-                customEntries.forEach(([name, definition]) => {
-                    dom.customThemeList.appendChild(createThemeChip(name, definition, true));
-                });
-                const isEmpty = customEntries.length === 0;
-                dom.customThemeList.dataset.empty = isEmpty ? 'true' : 'false';
-                if (dom.clearCustomThemes) {
-                    dom.clearCustomThemes.hidden = isEmpty;
-                }
-            }
-
-            function createThemeChip(name, definition, isCustom) {
-                const wrapper = document.createElement('div');
-                wrapper.className = 'theme-chip';
-                wrapper.dataset.theme = name;
-                wrapper.dataset.active = state.theme.active === name ? 'true' : 'false';
-
-                const selectButton = document.createElement('button');
-                selectButton.type = 'button';
-                selectButton.className = 'theme-chip__select';
-                selectButton.dataset.themeSelect = name;
-                selectButton.textContent = definition.label || name;
-                wrapper.appendChild(selectButton);
-
-                if (isCustom) {
-                    const deleteButton = document.createElement('button');
-                    deleteButton.type = 'button';
-                    deleteButton.className = 'theme-chip__delete';
-                    deleteButton.dataset.themeDelete = name;
-                    deleteButton.setAttribute('aria-label', `Elimina il tema ${definition.label || name}`);
-                    deleteButton.textContent = '×';
-                    wrapper.appendChild(deleteButton);
-                }
-
-                return wrapper;
-            }
-
-            function handleThemeChipClick(event) {
-                const deleteBtn = event.target.closest('[data-theme-delete]');
-                if (deleteBtn) {
-                    const themeName = deleteBtn.dataset.themeDelete;
-                    delete state.theme.custom[themeName];
-                    saveCustomThemes();
-                    if (state.theme.active === themeName) {
-                        applyTheme('aurora');
-                    } else {
-                        renderThemeLists();
-                    }
-                    return;
-                }
-                const selectBtn = event.target.closest('[data-theme-select]');
-                if (selectBtn) {
-                    applyTheme(selectBtn.dataset.themeSelect);
-                    closeThemePanel();
-                }
-            }
-
-            function handleCustomThemeSubmit(event) {
-                event.preventDefault();
-                if (!dom.customThemeName) {
-                    return;
-                }
-                const label = dom.customThemeName.value.trim();
-                if (!label) {
-                    dom.customThemeName.focus();
-                    return;
-                }
-                const themeValues = {};
-                THEME_VARIABLES.forEach(({ key, defaultValue }) => {
-                    const input = dom.customThemeFields.querySelector(`[data-variable=\"${key}\"]`);
-                    themeValues[key] = (input?.value || defaultValue).trim();
-                });
-                const themeId = generateThemeId(label);
-                state.theme.custom[themeId] = { label, values: themeValues };
-                saveCustomThemes();
-                dom.customThemeForm.reset();
-                populateCustomThemeFields(themeValues);
-                renderThemeLists();
-                applyTheme(themeId);
-            }
-
-            function clearAllCustomThemes() {
-                if (!Object.keys(state.theme.custom).length) {
-                    return;
-                }
-                if (!confirm('Vuoi eliminare tutti i temi personalizzati?')) {
-                    return;
-                }
-                state.theme.custom = {};
-                saveCustomThemes();
-                renderThemeLists();
-            }
-
-            function toggleThemePanel() {
-                if (!dom.themePanel) {
-                    return;
-                }
-                const isHidden = dom.themePanel.hasAttribute('hidden');
-                setThemePanelVisibility(isHidden);
-            }
-
-            function closeThemePanel(focusButton = false) {
-                setThemePanelVisibility(false, focusButton);
-            }
-
-            function setThemePanelVisibility(isVisible, focusButton = false) {
-                if (!dom.themePanel || !dom.themeButton) {
-                    return;
-                }
-                if (isVisible) {
-                    dom.themePanel.hidden = false;
-                    dom.themePanel.classList.add('theme-panel--open');
-                    dom.themeButton.setAttribute('aria-expanded', 'true');
-                    populateCustomThemeFields();
-                } else {
-                    dom.themePanel.hidden = true;
-                    dom.themePanel.classList.remove('theme-panel--open');
-                    dom.themeButton.setAttribute('aria-expanded', 'false');
-                    if (focusButton) {
-                        dom.themeButton.focus();
-                    }
-                }
-            }
-
-            function handleThemeOutsideClick(event) {
-                if (!dom.themePanel || dom.themePanel.hidden) {
-                    return;
-                }
-                const clickInsidePanel = dom.themePanel.contains(event.target);
-                const clickOnButton = dom.themeButton?.contains(event.target);
-                if (!clickInsidePanel && !clickOnButton) {
-                    closeThemePanel();
-                }
-            }
-
-            function applyTheme(themeName) {
-                const themeDefinition = getThemeDefinition(themeName);
-                if (!themeDefinition) {
-                    return;
-                }
-                Object.entries(themeDefinition.values).forEach(([variable, value]) => {
-                    document.documentElement.style.setProperty(variable, value);
-                });
-                state.theme.active = themeName;
-                if (state.config.storageAvailable) {
-                    localStorage.setItem(STORAGE_KEYS.activeTheme, themeName);
-                }
-                renderThemeLists();
-                populateCustomThemeFields(themeDefinition.values);
-            }
-
-            function getThemeDefinition(name) {
-                return THEME_PRESETS[name] || state.theme.custom[name] || null;
-            }
-
-            function saveCustomThemes() {
-                if (!state.config.storageAvailable) {
-                    return;
-                }
-                localStorage.setItem(STORAGE_KEYS.customThemes, JSON.stringify(state.theme.custom));
-            }
-
-            function loadCustomThemes() {
-                if (!state.config.storageAvailable) {
-                    return {};
-                }
-                try {
-                    const stored = localStorage.getItem(STORAGE_KEYS.customThemes);
-                    return stored ? JSON.parse(stored) : {};
-                } catch (error) {
-                    return {};
-                }
-            }
-
-            function normalizeColor(value, fallback) {
-                const trimmed = (value || '').trim();
-                if (trimmed.startsWith('#') && (trimmed.length === 7 || trimmed.length === 4)) {
-                    return trimmed.length === 4
-                        ? `#${trimmed[1]}${trimmed[1]}${trimmed[2]}${trimmed[2]}${trimmed[3]}${trimmed[3]}`
-                        : trimmed;
-                }
-                return fallback || '#000000';
-            }
-
-            function generateThemeId(label) {
-                const base = label
-                    .toLowerCase()
-                    .replace(/[^a-z0-9]+/g, '-')
-                    .replace(/^-+|-+$/g, '') || 'tema';
-                let candidate = base;
-                let counter = 1;
-                while (THEME_PRESETS[candidate] || state.theme.custom[candidate]) {
-                    candidate = `${base}-${counter++}`;
-                }
-                return candidate;
-            }
-
-            function setupOverlayHandlers() {
-                if (!dom.overlayForm) {
-                    return;
-                }
-                dom.overlayForm.addEventListener('submit', handleOverlaySubmit);
-                if (dom.overlayReloadEnv) {
-                    dom.overlayReloadEnv.addEventListener('click', () => loadMapsApiFromEnv(true));
-                }
-                if (dom.overlayClearStorage) {
-                    dom.overlayClearStorage.addEventListener('click', handleOverlayClearStorage);
-                }
-                if (dom.overlayRemember) {
-                    dom.overlayRemember.addEventListener('change', (event) => {
-                        state.config.rememberCredentials = event.target.checked;
-                        if (!state.config.rememberCredentials) {
-                            clearStoredCredentials();
-                        } else if (state.config.mapsKey && state.config.mapId) {
-                            persistCredentials();
-                        }
-                    });
-                }
-            }
-
-            function hydrateConfigurationFromStorage() {
-                if (!state.config.storageAvailable) {
-                    return;
-                }
-                try {
-                    const storedCredentials = localStorage.getItem(STORAGE_KEYS.credentials);
-                    if (storedCredentials) {
-                        const parsed = JSON.parse(storedCredentials);
-                        if (parsed && typeof parsed === 'object') {
-                            if (typeof parsed.mapsKey === 'string') {
-                                state.config.mapsKey = parsed.mapsKey;
-                            }
-                            if (typeof parsed.mapId === 'string') {
-                                state.config.mapId = parsed.mapId;
-                            }
-                            state.config.rememberCredentials = Boolean(parsed.remember);
-                        }
-                    }
-                } catch (error) {
-                    console.warn('Impossibile leggere le credenziali salvate:', error);
-                }
-
-                try {
-                    const storedView = localStorage.getItem(STORAGE_KEYS.mapView);
-                    if (storedView) {
-                        const parsedView = JSON.parse(storedView);
-                        if (isValidStoredView(parsedView)) {
-                            state.map.preferredView = parsedView;
-                            state.map.center = { lat: parsedView.center.lat, lng: parsedView.center.lng };
-                            state.map.zoom = parsedView.zoom;
-                            state.map.tilt = parsedView.tilt;
-                            state.map.heading = parsedView.heading;
-                        }
-                    }
-                } catch (error) {
-                    console.warn('Impossibile leggere le preferenze della vista:', error);
-                }
-            }
-
-            function syncOverlayForm() {
-                if (!dom.overlayForm) {
-                    return;
-                }
-                if (dom.overlayApiKey) {
-                    dom.overlayApiKey.value = state.config.mapsKey ?? '';
-                }
-                if (dom.overlayMapId) {
-                    dom.overlayMapId.value = state.config.mapId ?? '';
-                }
-                if (dom.overlayRemember) {
-                    dom.overlayRemember.checked = state.config.rememberCredentials;
-                    dom.overlayRemember.disabled = !state.config.storageAvailable;
-                }
-                if (dom.overlayClearStorage) {
-                    dom.overlayClearStorage.disabled = !state.config.storageAvailable;
-                }
-                clearOverlayError();
-            }
-
-            function initializeMapConfiguration() {
-                const container = dom.mapContainer;
-                const defaults = {
-                    center: {
-                        lat: parseNumber(container?.dataset.centerLat, 48.85837),
-                        lng: parseNumber(container?.dataset.centerLng, 2.29448)
-                    },
-                    zoom: parseNumber(container?.dataset.zoom, 18),
-                    tilt: parseNumber(container?.dataset.tilt, 60),
-                    heading: parseNumber(container?.dataset.heading, 0),
-                    tiltStep: parseNumber(container?.dataset.tiltStep, 5),
-                    headingStep: parseNumber(container?.dataset.headingStep, 10)
-                };
-
-                state.map.viewDefaults = defaults;
-                state.map.center = { ...defaults.center };
-                state.map.zoom = defaults.zoom;
-                state.map.tilt = defaults.tilt;
-                state.map.heading = defaults.heading;
-                state.map.tiltStep = defaults.tiltStep;
-                state.map.headingStep = defaults.headingStep;
-                if (!state.map.preferredView) {
-                    state.map.preferredView = {
-                        center: { ...defaults.center },
-                        zoom: defaults.zoom,
-                        tilt: defaults.tilt,
-                        heading: defaults.heading
-                    };
-                }
-            }
-
-            function handleOverlaySubmit(event) {
-                event.preventDefault();
-                if (!dom.overlayApiKey || !dom.overlayMapId) {
-                    return;
-                }
-                clearOverlayError();
-                const apiKey = dom.overlayApiKey.value.trim();
-                const mapId = dom.overlayMapId.value.trim();
-                if (!apiKey) {
-                    showOverlayError('Inserisci una Google Maps API key valida.');
-                    dom.overlayApiKey.focus();
-                    return;
-                }
-                if (!mapId) {
-                    showOverlayError('Inserisci un Map ID vettoriale valido.');
-                    dom.overlayMapId.focus();
-                    return;
-                }
-
-                state.config.mapsKey = apiKey;
-                state.config.mapId = mapId;
-                state.config.rememberCredentials = Boolean(dom.overlayRemember?.checked);
-                if (state.config.rememberCredentials) {
-                    persistCredentials();
-                } else {
-                    clearStoredCredentials();
-                }
-
-                syncOverlayForm();
-                hideMapOverlay();
-                pushStatus('Credenziali caricate manualmente. Caricamento della mappa in corso...', false);
-                ensureGoogleMapsScript(apiKey);
-            }
-
-            function handleOverlayClearStorage() {
-                if (!state.config.storageAvailable) {
-                    showOverlayError('Il salvataggio locale non è disponibile in questa sessione.');
-                    return;
-                }
-                clearStoredCredentials();
-                clearStoredViewPreferences();
-                state.config.mapsKey = null;
-                state.config.mapId = null;
-                state.config.rememberCredentials = false;
-                syncOverlayForm();
-                pushStatus('Dati salvati rimossi dal browser.', false);
-            }
-
-            function persistCredentials() {
-                if (!state.config.storageAvailable) {
-                    return;
-                }
-                try {
-                    const payload = {
-                        mapsKey: state.config.mapsKey,
-                        mapId: state.config.mapId,
-                        remember: true
-                    };
-                    localStorage.setItem(STORAGE_KEYS.credentials, JSON.stringify(payload));
-                } catch (error) {
-                    console.warn('Impossibile salvare le credenziali:', error);
-                }
-            }
-
-            function clearStoredCredentials() {
-                if (!state.config.storageAvailable) {
-                    return;
-                }
-                try {
-                    localStorage.removeItem(STORAGE_KEYS.credentials);
-                } catch (error) {
-                    console.warn('Impossibile cancellare le credenziali salvate:', error);
-                }
-            }
-
-            function persistMapView() {
-                if (!state.config.storageAvailable) {
-                    return;
-                }
-                if (!state.map.center) {
-                    return;
-                }
-                try {
-                    const payload = {
-                        center: { lat: state.map.center.lat, lng: state.map.center.lng },
-                        zoom: state.map.zoom,
-                        tilt: state.map.tilt,
-                        heading: state.map.heading
-                    };
-                    localStorage.setItem(STORAGE_KEYS.mapView, JSON.stringify(payload));
-                    state.map.preferredView = {
-                        center: { ...payload.center },
-                        zoom: payload.zoom,
-                        tilt: payload.tilt,
-                        heading: payload.heading
-                    };
-                } catch (error) {
-                    console.warn('Impossibile salvare la vista della mappa:', error);
-                }
-            }
-
-            function clearStoredViewPreferences() {
-                if (!state.config.storageAvailable) {
-                    return;
-                }
-                try {
-                    localStorage.removeItem(STORAGE_KEYS.mapView);
-                } catch (error) {
-                    console.warn('Impossibile rimuovere le preferenze della vista:', error);
-                }
-                state.map.preferredView = {
-                    center: { ...state.map.viewDefaults.center },
-                    zoom: state.map.viewDefaults.zoom,
-                    tilt: state.map.viewDefaults.tilt,
-                    heading: state.map.viewDefaults.heading
-                };
-            }
-
-            function showOverlayError(message) {
-                if (dom.overlayError) {
-                    dom.overlayError.textContent = message;
-                    dom.overlayError.hidden = false;
-                }
-            }
-
-            function clearOverlayError() {
-                if (dom.overlayError) {
-                    dom.overlayError.textContent = '';
-                    dom.overlayError.hidden = true;
-                }
-            }
-
-            function isValidStoredView(view) {
-                if (!view || typeof view !== 'object') {
-                    return false;
-                }
-                const centerValid = view.center && Number.isFinite(view.center.lat) && Number.isFinite(view.center.lng);
-                return (
-                    centerValid &&
-                    Number.isFinite(view.zoom) &&
-                    Number.isFinite(view.tilt) &&
-                    Number.isFinite(view.heading)
-                );
-            }
-
-            function updateMapStateFromInstance() {
-                if (!state.map.instance) {
-                    return;
-                }
-                const center = state.map.instance.getCenter?.();
-                if (center) {
-                    state.map.center = { lat: center.lat(), lng: center.lng() };
-                }
-                const zoom = state.map.instance.getZoom?.();
-                if (Number.isFinite(zoom)) {
-                    state.map.zoom = zoom;
-                }
-                const heading = state.map.instance.getHeading?.();
-                if (Number.isFinite(heading)) {
-                    state.map.heading = heading;
-                }
-                const tilt = state.map.instance.getTilt?.();
-                if (Number.isFinite(tilt)) {
-                    state.map.tilt = tilt;
-                }
-            }
-
-            function parseNumber(value, fallback) {
-                const parsed = Number(value);
-                return Number.isFinite(parsed) ? parsed : fallback;
-            }
-
-            function init() {
-                if (!window.mlMatrix) {
-                    pushStatus('Impossibile caricare la libreria ml-matrix. Controlla la connessione e ricarica.', true);
-                    return;
-                }
-
-                cacheDom();
-                initializeStorage();
-                initializeThemeManager();
-                initializeMapConfiguration();
-                setupOverlayHandlers();
-                hydrateConfigurationFromStorage();
-                syncOverlayForm();
-
-                state.image.element = dom.photo;
-                state.image.overlay = dom.overlay;
-                state.image.overlayCtx = dom.overlay.getContext('2d');
-
-                safeAddEventListener(dom.imageInput, 'change', handleImageSelection);
-                safeAddEventListener(dom.imageWrapper, 'click', handleImageClick);
-                safeAddEventListener(dom.clearImagePoints, 'click', clearImagePoints);
-                safeAddEventListener(dom.fitImage, 'click', () => fitImageToContainer(true));
-                safeAddEventListener(dom.matchesBody, 'click', handleTableClick);
-                safeAddEventListener(dom.matchesBody, 'change', handleTableChange);
-                safeAddEventListener(dom.solveButton, 'click', computeCameraPose);
-                safeAddEventListener(dom.tiltIncrease, 'click', () => adjustTilt(state.map.tiltStep));
-                safeAddEventListener(dom.tiltDecrease, 'click', () => adjustTilt(-state.map.tiltStep));
-                safeAddEventListener(dom.headingLeft, 'click', () => adjustHeading(-state.map.headingStep));
-                safeAddEventListener(dom.headingRight, 'click', () => adjustHeading(state.map.headingStep));
-                safeAddEventListener(dom.resetView, 'click', resetMapView);
-                window.addEventListener('resize', syncOverlaySize);
-
-                state.image.element.addEventListener('load', () => {
-                    state.image.naturalWidth = state.image.element.naturalWidth;
-                    state.image.naturalHeight = state.image.element.naturalHeight;
-                    dom.placeholder.style.display = 'none';
-                    state.image.element.style.display = 'block';
-                    syncOverlaySize();
-                    drawOverlay();
-                    pushStatus('Immagine caricata. Clicca su un punto della foto per iniziare una corrispondenza.', false);
-                });
-            }
-
-            function resetCorrespondencesState(options = {}) {
-                state.correspondences.forEach((entry) => {
-                    if (entry.marker) {
-                        entry.marker.setMap(null);
-                    }
-                });
-                state.correspondences = [];
-                state.nextId = 1;
-                state.pending = null;
-                updateTable();
-                drawOverlay();
-                if (dom.resultsCard) {
-                    dom.resultsCard.style.display = 'none';
-                }
-                if (options.statusMessage) {
-                    pushStatus(options.statusMessage, Boolean(options.isError));
-                }
-            }
-
-            function releaseImageObjectUrl() {
-                if (state.image.objectUrl) {
-                    try {
-                        URL.revokeObjectURL(state.image.objectUrl);
-                    } catch (error) {
-                        console.warn('Impossibile rilasciare l\'URL dell\'immagine:', error);
-                    }
-                    state.image.objectUrl = null;
-                }
-            }
-
-            function isSupportedImageFile(file) {
-                if (!file) {
-                    return false;
-                }
-                if (file.type && ALLOWED_IMAGE_TYPES.has(file.type.toLowerCase())) {
-                    return true;
-                }
-                const name = file.name || '';
-                const dotIndex = name.lastIndexOf('.');
-                if (dotIndex !== -1) {
-                    const ext = name.slice(dotIndex + 1).toLowerCase();
-                    if (ALLOWED_IMAGE_EXTENSIONS.has(ext)) {
-                        return true;
-                    }
-                }
-                return false;
-            }
-
-            function handleImageSelection(event) {
-                const file = event.target.files?.[0];
-                if (!file) {
-                    return;
-                }
-                if (file.size > MAX_IMAGE_BYTES) {
-                    pushStatus('Il file selezionato supera i 20 MB consentiti.', true);
-                    event.target.value = '';
-                    return;
-                }
-                if (!isSupportedImageFile(file)) {
-                    pushStatus('Formato immagine non supportato. Utilizza JPEG, PNG, WebP o formati standard.', true);
-                    event.target.value = '';
-                    return;
-                }
-                try {
-                    const url = URL.createObjectURL(file);
-                    releaseImageObjectUrl();
-                    state.image.objectUrl = url;
-                    state.image.element.src = url;
-                    resetCorrespondencesState();
-                } catch (error) {
-                    console.error('Errore nel caricamento dell\'immagine:', error);
-                    pushStatus('Impossibile caricare l\'immagine selezionata. Riprovare con un file differente.', true);
-                }
-            }
-
-            function handleImageClick(event) {
-                if (!state.image.naturalWidth || !state.image.naturalHeight) {
-                    return;
-                }
-                const rect = state.image.element.getBoundingClientRect();
-                if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) {
-                    return;
-                }
-
-                const relativeX = (event.clientX - rect.left) / rect.width;
-                const relativeY = (event.clientY - rect.top) / rect.height;
-
-                const xPx = relativeX * state.image.naturalWidth;
-                const yPx = relativeY * state.image.naturalHeight;
-
-                const id = state.nextId++;
-                const entry = {
-                    id,
-                    imagePoint: { x: xPx, y: yPx },
-                    mapPoint: null,
-                    marker: null
-                };
-                state.correspondences.push(entry);
-                state.pending = { type: 'map', id };
-                updateTable();
-                drawOverlay();
-                highlightPending(entry.id);
-                pushStatus(`Punto #${id} aggiunto sulla foto. Ora clicca sulla mappa per posizionare la corrispondenza.`, false);
-            }
-
-            function highlightPending(id) {
-                if (!dom.matchesBody) {
-                    return;
-                }
-                dom.matchesBody.querySelectorAll('tr').forEach((row) => {
-                    if (Number(row.dataset.id) === id) {
-                        row.classList.add('pending-map');
-                    } else {
-                        row.classList.remove('pending-map');
-                    }
-                });
-            }
-
-            function clearImagePoints() {
-                resetCorrespondencesState({ statusMessage: 'Tutti i punti sono stati rimossi.', isError: false });
-            }
-
-            function fitImageToContainer(notify = false) {
-                if (!state.image.naturalWidth) {
-                    return;
-                }
-                state.image.element.style.width = '100%';
-                state.image.element.style.height = 'auto';
-                syncOverlaySize();
-                drawOverlay();
-                if (notify) {
-                    pushStatus('Immagine adattata al contenitore.', false);
-                }
-            }
-
-            function syncOverlaySize() {
-                if (!state.image.naturalWidth) {
-                    return;
-                }
-                const rect = state.image.element.getBoundingClientRect();
-                state.image.overlay.width = rect.width;
-                state.image.overlay.height = rect.height;
-                state.image.overlay.style.width = `${rect.width}px`;
-                state.image.overlay.style.height = `${rect.height}px`;
-                drawOverlay();
-            }
-
-            function drawOverlay() {
-                const ctx = state.image.overlayCtx;
-                if (!ctx) {
-                    return;
-                }
-                const width = state.image.overlay.width;
-                const height = state.image.overlay.height;
-                ctx.clearRect(0, 0, width, height);
-                ctx.lineWidth = 2;
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-
-                state.correspondences.forEach((entry) => {
-                    if (!entry.imagePoint) {
-                        return;
-                    }
-                    const { x, y } = toDisplayCoordinates(entry.imagePoint);
-                    const isPending = state.pending?.id === entry.id && state.pending?.type === 'map';
-                    ctx.fillStyle = isPending ? '#f97316' : '#38bdf8';
-                    ctx.strokeStyle = 'rgba(15, 23, 42, 0.65)';
-                    ctx.beginPath();
-                    ctx.arc(x, y, 7, 0, Math.PI * 2);
-                    ctx.fill();
-                    ctx.stroke();
-                    ctx.fillStyle = '#0b1120';
-                    ctx.font = '600 11px "Segoe UI", sans-serif';
-                    ctx.fillText(entry.id.toString(), x, y + 0.5);
-                });
-            }
-
-            function toDisplayCoordinates(point) {
-                const rect = state.image.element.getBoundingClientRect();
-                const scaleX = rect.width / state.image.naturalWidth;
-                const scaleY = rect.height / state.image.naturalHeight;
-                return {
-                    x: point.x * scaleX,
-                    y: point.y * scaleY
-                };
-            }
-
-            function updateTable() {
-                if (!dom.matchesBody || !dom.matchesTable || !dom.emptyState) {
-                    return;
-                }
-
-                if (!state.correspondences.length) {
-                    dom.matchesTable.style.display = 'none';
-                    dom.emptyState.style.display = 'block';
-                    dom.matchesBody.textContent = '';
-                    return;
-                }
-
-                dom.matchesTable.style.display = 'table';
-                dom.emptyState.style.display = 'none';
-
-                const existingRows = new Map(Array.from(dom.matchesBody.children).map((row) => [Number(row.dataset.id), row]));
-                const fragment = document.createDocumentFragment();
-
-                state.correspondences.forEach((entry) => {
-                    let row = existingRows.get(entry.id);
-                    if (!row) {
-                        row = document.createElement('tr');
-                    }
-                    renderCorrespondenceRow(row, entry);
-                    fragment.appendChild(row);
-                    existingRows.delete(entry.id);
-                });
-
-                existingRows.forEach((row) => row.remove());
-                dom.matchesBody.replaceChildren(fragment);
-
-                if (state.pending?.type === 'map') {
-                    highlightPending(state.pending.id);
-                }
-            }
-
-            function renderCorrespondenceRow(row, entry) {
-                const latLngContent = entry.mapPoint
-                    ? `<div>Lat: ${entry.mapPoint.lat.toFixed(6)}</div><div>Lng: ${entry.mapPoint.lng.toFixed(6)}</div>`
-                    : '<div class="secondary">Clicca sulla mappa</div>';
-
-                const altitudeValue = entry.mapPoint?.altitude != null
-                    ? entry.mapPoint.altitude.toFixed(2)
-                    : '';
-
-                row.dataset.id = entry.id.toString();
-                row.innerHTML = `
-                    <td><span class="badge">${entry.id}</span></td>
-                    <td>${entry.imagePoint.x.toFixed(1)}, ${entry.imagePoint.y.toFixed(1)}</td>
-                    <td>${latLngContent}</td>
-                    <td><input type="number" class="altitude-input" data-id="${entry.id}" value="${altitudeValue}" step="0.1" placeholder="Alt"></td>
-                    <td class="table-actions"><button data-action="remove" data-id="${entry.id}">Rimuovi</button></td>
-                `;
-
-                const input = row.querySelector('input.altitude-input');
-                if (input) {
-                    input.dataset.previousValue = altitudeValue;
-                }
-            }
-
-            function handleTableClick(event) {
-                const target = event.target;
-                if (!(target instanceof HTMLElement)) {
-                    return;
-                }
-                if (target.dataset.action === 'remove') {
-                    const id = Number(target.dataset.id);
-                    removeCorrespondence(id);
-                }
-            }
-
-            function handleTableChange(event) {
-                const target = event.target;
-                if (!(target instanceof HTMLInputElement)) {
-                    return;
-                }
-                if (target.classList.contains('altitude-input')) {
-                    const id = Number(target.dataset.id);
-                    const rawValue = target.value.trim();
-                    const previousValue = target.dataset.previousValue ?? '';
-                    if (rawValue === '') {
-                        const entryToClear = state.correspondences.find((item) => item.id === id);
-                        if (entryToClear && entryToClear.mapPoint) {
-                            entryToClear.mapPoint.altitude = null;
-                            entryToClear.mapPoint.ecef = null;
-                        }
-                        target.dataset.previousValue = '';
-                        return;
-                    }
-                    const value = Number(rawValue);
-                    if (!Number.isFinite(value)) {
-                        target.value = previousValue;
-                        return;
-                    }
-                    if (value < ALTITUDE_LIMITS.min || value > ALTITUDE_LIMITS.max) {
-                        pushStatus(`L'altitudine deve essere compresa tra ${ALTITUDE_LIMITS.min} m e ${ALTITUDE_LIMITS.max} m.`, true);
-                        target.value = previousValue;
-                        return;
-                    }
-                    const entry = state.correspondences.find((item) => item.id === id);
-                    if (entry && entry.mapPoint) {
-                        entry.mapPoint.altitude = value;
-                        entry.mapPoint.ecef = latLngAltToECEF(entry.mapPoint.lat, entry.mapPoint.lng, value);
-                        target.dataset.previousValue = value.toFixed(2);
-                    } else {
-                        target.value = previousValue;
-                    }
-                }
-            }
-
-            function removeCorrespondence(id) {
-                const index = state.correspondences.findIndex((entry) => entry.id === id);
-                if (index === -1) {
-                    return;
-                }
-                const [removed] = state.correspondences.splice(index, 1);
-                if (removed?.marker) {
-                    removed.marker.setMap(null);
-                }
-                if (state.pending?.id === id) {
-                    state.pending = null;
-                }
-                updateTable();
-                drawOverlay();
-                pushStatus(`Corrispondenza #${id} rimossa.`, false);
-            }
-
-            function pushStatus(message, isError = false) {
-                if (!dom.statusBanner || !dom.statusMessage) {
-                    try {
-                        cacheDom();
-                    } catch (error) {
-                        console.warn('UI non ancora pronto per aggiornare lo stato:', message);
-                        return;
-                    }
-                }
-                if (!dom.statusBanner || !dom.statusMessage) {
-                    console.warn('UI non ancora pronto per aggiornare lo stato:', message);
-                    return;
-                }
-                dom.statusBanner.style.background = isError
-                    ? 'rgba(244, 63, 94, 0.18)'
-                    : 'rgba(56, 189, 248, 0.12)';
-                dom.statusBanner.style.borderColor = isError
-                    ? 'rgba(244, 63, 94, 0.4)'
-                    : 'rgba(56, 189, 248, 0.4)';
-                dom.statusMessage.textContent = message;
-            }
-
-            function showMapOverlay(options = {}) {
-                if (!dom.mapOverlay) {
-                    try {
-                        cacheDom();
-                    } catch (error) {
-                        return;
-                    }
-                }
-                if (!dom.mapOverlay) {
-                    return;
-                }
-
-                const config = typeof options === 'string' ? { message: options } : options;
-                if (config.message && dom.overlayMessage) {
-                    dom.overlayMessage.innerHTML = config.message;
-                }
-                if (config.error) {
-                    showOverlayError(config.error);
-                } else {
-                    clearOverlayError();
-                }
-                if (config.prefill !== false) {
-                    syncOverlayForm();
-                }
-                dom.mapOverlay.classList.add('visible');
-                if (config.focus === 'mapId' && dom.overlayMapId) {
-                    dom.overlayMapId.focus();
-                } else if (config.focus === 'apiKey' && dom.overlayApiKey) {
-                    dom.overlayApiKey.focus();
-                }
-            }
-
-            function hideMapOverlay() {
-                if (!dom.mapOverlay) {
-                    return;
-                }
-                dom.mapOverlay.classList.remove('visible');
-                clearOverlayError();
-            }
-
-            async function loadMapsApiFromEnv(forceReload = false) {
-                if (!forceReload) {
-                    if (state.config.mapsKey && state.config.mapId) {
-                        ensureGoogleMapsScript(state.config.mapsKey);
-                        return;
-                    }
-                    if (state.config.mapsKey && !state.config.mapId) {
-                        pushStatus('Specifica un GOOGLE_MAPS_MAP_ID per abilitare la mappa 3D.', true);
-                        showMapOverlay({
-                            message: 'Abbiamo trovato una API key ma manca <code>GOOGLE_MAPS_MAP_ID</code>. Inserisci un Map ID vettoriale valido o aggiornalo nel file <code>.env</code>.',
-                            focus: 'mapId'
-                        });
-                        return;
-                    }
-                    if (!state.config.mapsKey && state.config.mapId) {
-                        showMapOverlay({
-                            message: 'È stato rilevato un <code>GOOGLE_MAPS_MAP_ID</code> ma manca la chiave. Inseriscila qui sotto o aggiornala nel file <code>.env</code>.',
-                            focus: 'apiKey'
-                        });
-                        return;
-                    }
-                }
-
-                try {
-                    const envContent = await readEnvFile();
-                    const env = parseEnv(envContent);
-                    const apiKeyRaw = env.GOOGLE_MAPS_API_KEY || env.GOOGLE_MAPS_KEY || '';
-                    const apiKey = apiKeyRaw.trim();
-                    const mapIdRaw = env.GOOGLE_MAPS_MAP_ID || env.GOOGLE_MAP_ID || '';
-                    const mapId = mapIdRaw.trim();
-
-                    if (!apiKey) {
-                        pushStatus('Chiave Google Maps non trovata nel file .env. Inserisci manualmente la tua API key.', true);
-                        showMapOverlay({
-                            message: 'Il file <code>.env</code> è stato letto ma non contiene <code>GOOGLE_MAPS_API_KEY</code>. Inserisci manualmente la chiave o aggiornalo e riprova.',
-                            focus: 'apiKey'
-                        });
-                        return;
-                    }
-
-                    state.config.mapsKey = apiKey;
-                    if (mapId) {
-                        state.config.mapId = mapId;
-                    }
-
-                    if (!state.config.mapId) {
-                        pushStatus('Configura GOOGLE_MAPS_MAP_ID in .env per abilitare la mappa 3D oppure inseriscilo manualmente.', true);
-                        showMapOverlay({
-                            message: 'Per utilizzare la vista 3D imposta <code>GOOGLE_MAPS_MAP_ID</code> nel file <code>.env</code> oppure inserisci il valore manualmente qui sotto.',
-                            focus: 'mapId'
-                        });
-                        return;
-                    }
-
-                    state.config.envLoaded = true;
-                    if (state.config.rememberCredentials) {
-                        persistCredentials();
-                    }
-                    syncOverlayForm();
-                    hideMapOverlay();
-                    pushStatus('Credenziali caricate da .env. Caricamento della mappa in corso...', false);
-                    ensureGoogleMapsScript(apiKey);
-                } catch (error) {
-                    console.error(error);
-                    pushStatus('Non riesco a leggere il file .env. Inserisci manualmente i valori richiesti.', true);
-                    showMapOverlay({
-                        message: 'Non riesco a leggere il file <code>.env</code>. Assicurati che sia raggiungibile dal server locale e contenga <code>GOOGLE_MAPS_API_KEY</code> e <code>GOOGLE_MAPS_MAP_ID</code>.',
-                        focus: 'apiKey',
-                        error: 'Lettura del file .env non riuscita.'
-                    });
-                }
-            }
-
-            async function readEnvFile() {
-                try {
-                    const response = await fetch('.env', { cache: 'no-store' });
-                    if (!response.ok) {
-                        return '';
-                    }
-                    return response.text();
-                } catch (error) {
-                    console.warn('Impossibile leggere .env: proseguo senza file locale.', error);
-                    return '';
-                }
-            }
-
-            function parseEnv(content) {
-                const result = {};
-                if (!content) {
-                    return result;
-                }
-                content.split(/\r?\n/).forEach((line) => {
-                    const trimmed = line.trim();
-                    if (!trimmed || trimmed.startsWith('#')) {
-                        return;
-                    }
-                    const separatorIndex = trimmed.indexOf('=');
-                    if (separatorIndex === -1) {
-                        return;
-                    }
-                    const key = trimmed.slice(0, separatorIndex).trim();
-                    const value = trimmed.slice(separatorIndex + 1).trim();
-                    if (key) {
-                        result[key] = value;
-                    }
-                });
-                return result;
-            }
-
-            function ensureGoogleMapsScript(apiKey) {
-                if (!apiKey) {
-                    return;
-                }
-                const existing = document.querySelector('script[data-google-maps="true"]');
-                if (existing) {
-                    if (existing.dataset.key === apiKey) {
-                        return;
-                    }
-                    existing.remove();
-                }
-                const encodedKey = encodeURIComponent(apiKey);
-                const script = document.createElement('script');
-                script.src = `https://maps.googleapis.com/maps/api/js?key=${encodedKey}&libraries=geometry&v=beta&callback=initMap`;
-                script.async = true;
-                script.defer = true;
-                script.dataset.googleMaps = 'true';
-                script.dataset.key = apiKey;
-                script.addEventListener('error', () => {
-                    pushStatus('Errore nel caricamento di Google Maps. Verifica la tua API key nel file .env.', true);
-                    showMapOverlay({
-                        message: 'Errore nel caricamento della libreria Google Maps. Controlla che <code>GOOGLE_MAPS_API_KEY</code> e <code>GOOGLE_MAPS_MAP_ID</code> siano corretti e che il server sia avviato tramite <code>python -m http.server</code>.',
-                        error: 'Impossibile scaricare le API Google Maps.',
-                        focus: 'apiKey'
-                    });
-                });
-                document.body.appendChild(script);
-            }
-
-            function initMap() {
-                if (!window.google || !window.google.maps) {
-                    pushStatus('Google Maps non è stato caricato. Inserisci una API key valida e ricarica la pagina.', true);
-                    showMapOverlay({ focus: 'apiKey' });
-                    return;
-                }
-                const initialView = state.map.preferredView || state.map.viewDefaults;
-                if (initialView) {
-                    state.map.center = { lat: initialView.center.lat, lng: initialView.center.lng };
-                    state.map.zoom = initialView.zoom;
-                    state.map.tilt = clamp(initialView.tilt, 0, GOOGLE_MAX_TILT);
-                    state.map.heading = initialView.heading;
-                }
-
-                const mapOptions = {
-                    center: state.map.center || { lat: 48.85837, lng: 2.29448 },
-                    zoom: state.map.zoom ?? 18,
-                    heading: state.map.heading ?? 0,
-                    tilt: state.map.tilt ?? 60,
-                    mapTypeId: 'satellite',
-                    disableDefaultUI: false,
-                    gestureHandling: 'greedy'
-                };
-                if (state.config.mapId) {
-                    mapOptions.mapId = state.config.mapId;
-                }
-                state.map.instance = new google.maps.Map(document.getElementById('map'), mapOptions);
-                state.map.elevationService = new google.maps.ElevationService();
-                hideMapOverlay();
-
-                state.map.instance.addListener('click', (event) => {
-                    if (!event.latLng) {
-                        return;
-                    }
-                    handleMapClick(event.latLng);
-                });
-
-                state.map.instance.addListener('idle', () => {
-                    updateMapStateFromInstance();
-                    persistMapView();
-                });
-
-                updateMapStateFromInstance();
-                persistMapView();
-
-                pushStatus('Mappa 3D pronta. Clicca su un punto della foto e poi sulla mappa per completare la corrispondenza.', false);
-            }
-
-            function handleMapClick(latLng) {
-                if (!state.pending || state.pending.type !== 'map') {
-                    pushStatus('Prima seleziona un punto sull’immagine da collegare.', true);
-                    return;
-                }
-                const entry = state.correspondences.find((item) => item.id === state.pending.id);
-                if (!entry) {
-                    state.pending = null;
-                    return;
-                }
-
-                const lat = latLng.lat();
-                const lng = latLng.lng();
-
-                if (entry.marker) {
-                    entry.marker.setMap(null);
-                }
-
-                entry.mapPoint = {
-                    lat,
-                    lng,
-                    altitude: null,
-                    ecef: null
-                };
-
-                entry.marker = new google.maps.Marker({
-                    position: { lat, lng },
-                    label: entry.id.toString(),
-                    map: state.map.instance,
-                    draggable: true,
-                    icon: {
-                        path: google.maps.SymbolPath.CIRCLE,
-                        scale: 10,
-                        strokeColor: '#0f172a',
-                        strokeWeight: 2,
-                        fillColor: '#38bdf8',
-                        fillOpacity: 0.9
-                    }
-                });
-
-                entry.marker.addListener('dragend', (dragEvent) => {
-                    const newLat = dragEvent.latLng.lat();
-                    const newLng = dragEvent.latLng.lng();
-                    entry.mapPoint.lat = newLat;
-                    entry.mapPoint.lng = newLng;
-                    fetchElevation(entry, true);
-                    updateTable();
-                });
-
-                fetchElevation(entry, false);
-
-                state.pending = null;
-                updateTable();
-                drawOverlay();
-                pushStatus(`Punto #${entry.id} collegato sulla mappa. Continua ad aggiungere corrispondenze.`);
-            }
-
-            function fetchElevation(entry, silent) {
-                if (!state.map.elevationService) {
-                    return;
-                }
-                const request = {
-                    locations: [{ lat: entry.mapPoint.lat, lng: entry.mapPoint.lng }]
-                };
-                state.map.elevationService.getElevationForLocations(request, (results, status) => {
-                    if (status === 'OK' && results && results.length > 0) {
-                        entry.mapPoint.altitude = results[0].elevation;
-                        entry.mapPoint.ecef = latLngAltToECEF(entry.mapPoint.lat, entry.mapPoint.lng, entry.mapPoint.altitude);
-                        updateTable();
-                        if (!silent) {
-                            pushStatus(`Altitudine terreno stimata per il punto #${entry.id}: ${entry.mapPoint.altitude.toFixed(1)} m.`, false);
-                        }
-                    } else {
-                        entry.mapPoint.altitude = 0;
-                        entry.mapPoint.ecef = latLngAltToECEF(entry.mapPoint.lat, entry.mapPoint.lng, 0);
-                        updateTable();
-                        if (!silent) {
-                            pushStatus(`Altitudine non disponibile per il punto #${entry.id}. Impostata a 0 m, modificabile manualmente.`, true);
-                        }
-                    }
-                });
-            }
-
-            function adjustTilt(step) {
-                if (!state.map.instance) {
-                    return;
-                }
-                state.map.tilt = clamp((state.map.tilt ?? 0) + step, 0, GOOGLE_MAX_TILT);
-                state.map.instance.setTilt(state.map.tilt);
-                persistMapView();
-            }
-
-            function adjustHeading(step) {
-                if (!state.map.instance) {
-                    return;
-                }
-                state.map.heading = ((state.map.heading ?? 0) + step + 360) % 360;
-                state.map.instance.setHeading(state.map.heading);
-                persistMapView();
-            }
-
-            function resetMapView() {
-                if (!state.map.instance) {
-                    return;
-                }
-                const target = state.map.viewDefaults || state.map.preferredView;
-                if (!target) {
-                    return;
-                }
-                state.map.center = { lat: target.center.lat, lng: target.center.lng };
-                state.map.zoom = target.zoom;
-                state.map.heading = target.heading;
-                state.map.tilt = clamp(target.tilt, 0, GOOGLE_MAX_TILT);
-                state.map.instance.moveCamera({
-                    center: state.map.center,
-                    zoom: state.map.zoom,
-                    heading: state.map.heading,
-                    tilt: state.map.tilt
-                });
-                persistMapView();
-            }
-
-            function arePointsCoplanar(points, tolerance = 1e-6) {
-                if (points.length < 4) return true; // Meno di 4 punti sono sempre complanari
-                
-                // Prendi i primi tre punti per formare un piano
-                const p0 = points[0];
-                const p1 = points[1];
-                const p2 = points[2];
-                
-                // Vettori nel piano
-                const v1 = {x: p1.x - p0.x, y: p1.y - p0.y, z: p1.z - p0.z};
-                const v2 = {x: p2.x - p0.x, y: p2.y - p0.y, z: p2.z - p0.z};
-                
-                // Vettore normale al piano
-                const normal = {
-                    x: v1.y * v2.z - v1.z * v2.y,
-                    y: v1.z * v2.x - v1.x * v2.z,
-                    z: v1.x * v2.y - v1.y * v2.x
-                };
-                
-                // Controlla se tutti gli altri punti giacciono sul piano
-                for (let i = 3; i < points.length; i++) {
-                    const p = points[i];
-                    const v = {x: p.x - p0.x, y: p.y - p0.y, z: p.z - p0.z};
-                    const dot = normal.x * v.x + normal.y * v.y + normal.z * v.z;
-                    
-                    if (Math.abs(dot) > tolerance) {
-                        return false; // Il punto non è sul piano
-                    }
-                }
-                
-                return true; // Tutti i punti sono complanari
-            }
-
-            function computeCameraPose() {
-                if (!window.mlMatrix) {
-                    pushStatus('ml-matrix non disponibile: impossibile stimare la posa.', true);
-                    return;
-                }
-                const usable = state.correspondences.filter((entry) => entry.imagePoint && entry.mapPoint && entry.mapPoint.ecef);
-                if (usable.length < 6) {
-                    pushStatus('Servono almeno 6 corrispondenze complete per stimare la posa della fotocamera.', true);
-                    return;
-                }
-                
-                // Controlla se i punti sono complanari
-                const points3D = usable.map(entry => entry.mapPoint.ecef);
-                if (arePointsCoplanar(points3D)) {
-                    pushStatus('I punti selezionati sono complanari. Aggiungi punti non complanari per una stima accurata.', true);
-                    return;
-                }
-
-                let projectionMatrix;
-                try {
-                    projectionMatrix = estimateProjectionMatrix(usable);
-                } catch (error) {
-                    console.error('Errore nella costruzione della matrice di proiezione:', error);
-                    pushStatus(error.message || 'Impossibile costruire il sistema per la stima della posa.', true);
-                    return;
-                }
-
-                const { Matrix } = window.mlMatrix;
-                const M = projectionMatrix.subMatrix(0, 2, 0, 2);
-                const p4 = projectionMatrix.subMatrix(0, 2, 3, 3);
-
-                let cameraECEF;
-                let geo;
-                try {
-                    const Minv = invert3x3(M, Matrix);
-                    const cameraCenterVec = Minv.mmul(p4);
-                    cameraECEF = {
-                        x: -cameraCenterVec.get(0, 0),
-                        y: -cameraCenterVec.get(1, 0),
-                        z: -cameraCenterVec.get(2, 0)
-                    };
-                    geo = ecefToGeodetic(cameraECEF.x, cameraECEF.y, cameraECEF.z);
-                } catch (error) {
-                    console.error('Errore nel calcolo del centro della fotocamera:', error);
-                    pushStatus('Impossibile ricavare il centro della fotocamera. Verifica che i punti non siano degeneri.', true);
-                    return;
-                }
-
-                dom.resultLat.textContent = `${geo.lat.toFixed(6)}°`;
-                dom.resultLng.textContent = `${geo.lng.toFixed(6)}°`;
-                dom.resultAlt.textContent = `${geo.altitude.toFixed(2)} m`;
-
-                let headingDisplay = '-';
-                let tiltDisplay = '-';
-
-                try {
-                    const { R } = decomposeKR(M, Matrix);
-                    const forward = cameraForwardVector(R);
-                    const { heading, tilt } = computeViewAngles(forward, cameraECEF);
-                    headingDisplay = `${heading.toFixed(1)}°`;
-                    tiltDisplay = `${tilt.toFixed(1)}°`;
-                    if (state.map.instance) {
-                        const clampedTilt = clamp(tilt, 0, GOOGLE_MAX_TILT);
-                        state.map.instance.moveCamera({
-                            center: { lat: geo.lat, lng: geo.lng },
-                            zoom: 19,
-                            heading,
-                            tilt: clampedTilt
-                        });
-                        state.map.heading = heading;
-                        state.map.tilt = clampedTilt;
-                        state.map.center = { lat: geo.lat, lng: geo.lng };
-                        state.map.zoom = 19;
-                        persistMapView();
-                    }
-                } catch (orientationError) {
-                    console.warn('Impossibile calcolare orientamento camera:', orientationError);
-                    headingDisplay = 'n/d';
-                    tiltDisplay = 'n/d';
-                }
-
-                dom.resultHeading.textContent = headingDisplay;
-                dom.resultTilt.textContent = tiltDisplay;
-
-                const reprojectionError = computeReprojectionError(projectionMatrix, usable);
-                dom.resultReproj.textContent = `${reprojectionError.toFixed(2)} px`;
-                dom.resultsCard.style.display = 'grid';
-
-                pushStatus('Posa stimata. Verifica i valori e rifinisci le corrispondenze se necessario.', false);
-            }
-
-            function estimateProjectionMatrix(correspondences) {
-                const { Matrix, SVD } = window.mlMatrix;
-                const system = buildProjectionSystem(correspondences);
-                const A = Matrix.from1DArray(system.rows, system.cols, Array.from(system.data));
-                const svd = new SVD(A);
-                if (!svd || !svd.rightSingularVectors) {
-                    throw new Error('Decomposizione SVD non riuscita durante la stima della posa.');
-                }
-                const V = svd.rightSingularVectors;
-                const hVec = V.subMatrix(0, V.rows - 1, V.columns - 1, V.columns - 1);
-                const h = hVec.to1DArray();
-                return Matrix.from1DArray(3, 4, h);
-            }
-
-            function buildProjectionSystem(correspondences) {
-                const cols = 12;
-                const rows = correspondences.length * 2;
-                const data = new Float64Array(rows * cols);
-                let rowIndex = 0;
-
-                correspondences.forEach((entry) => {
-                    const { x, y } = entry.imagePoint;
-                    const { x: X, y: Y, z: Z } = entry.mapPoint.ecef;
-
-                    const baseRow = rowIndex * cols;
-                    data[baseRow + 0] = X;
-                    data[baseRow + 1] = Y;
-                    data[baseRow + 2] = Z;
-                    data[baseRow + 3] = 1;
-                    data[baseRow + 8] = -x * X;
-                    data[baseRow + 9] = -x * Y;
-                    data[baseRow + 10] = -x * Z;
-                    data[baseRow + 11] = -x;
-                    rowIndex += 1;
-
-                    const secondBase = rowIndex * cols;
-                    data[secondBase + 4] = X;
-                    data[secondBase + 5] = Y;
-                    data[secondBase + 6] = Z;
-                    data[secondBase + 7] = 1;
-                    data[secondBase + 8] = -y * X;
-                    data[secondBase + 9] = -y * Y;
-                    data[secondBase + 10] = -y * Z;
-                    data[secondBase + 11] = -y;
-                    rowIndex += 1;
-                });
-
-                return { rows, cols, data };
-            }
-
-            function computeReprojectionError(P, correspondences) {
-                const { Matrix } = window.mlMatrix;
-                let total = 0;
-                let count = 0;
-                correspondences.forEach((entry) => {
-                    const world = entry.mapPoint.ecef;
-                    const point3D = new Matrix([[world.x], [world.y], [world.z], [1]]);
-                    const projected = P.mmul(point3D);
-                    const w = projected.get(2, 0);
-                    if (Math.abs(w) < 1e-9) {
-                        return;
-                    }
-                    const x = projected.get(0, 0) / w;
-                    const y = projected.get(1, 0) / w;
-                    const dx = x - entry.imagePoint.x;
-                    const dy = y - entry.imagePoint.y;
-                    total += Math.hypot(dx, dy);
-                    count += 1;
-                });
-                return count ? total / count : 0;
-            }
-
-            function decomposeKR(M, Matrix) {
-                const array = M.to2DArray();
-                const { upper, orthonormal } = rqDecompositionRows(array);
-                const K = new Matrix(upper);
-                const R = new Matrix(orthonormal);
-                return { K, R };
-            }
-
-            function rqDecompositionRows(array) {
-                const tolerance = 1e-9;
-                const rows = array.map((row) => row.slice());
-
-                const q3 = normalizeVector(rows[2], tolerance);
-                const r33 = vectorDot(rows[2], q3);
-
-                const proj2on3 = vectorDot(rows[1], q3);
-                let u2 = vectorSubtract(rows[1], vectorScale(q3, proj2on3));
-                const q2 = normalizeVector(u2, tolerance);
-                const r23 = proj2on3;
-                const r22 = vectorDot(rows[1], q2);
-
-                const proj1on3 = vectorDot(rows[0], q3);
-                const proj1on2 = vectorDot(rows[0], q2);
-                let u1 = vectorSubtract(rows[0], vectorScale(q3, proj1on3));
-                u1 = vectorSubtract(u1, vectorScale(q2, proj1on2));
-                const q1 = normalizeVector(u1, tolerance);
-                const r13 = proj1on3;
-                const r12 = proj1on2;
-                const r11 = vectorDot(rows[0], q1);
-
-                const Q = [q1, q2, q3];
-                const R = [
-                    [r11, r12, r13],
-                    [0, r22, r23],
-                    [0, 0, r33]
-                ];
-
-                const diagSigns = [Math.sign(R[0][0]) || 1, Math.sign(R[1][1]) || 1, Math.sign(R[2][2]) || 1];
-                diagSigns.forEach((sign, idx) => {
-                    if (sign < 0) {
-                        for (let row = 0; row < 3; row += 1) {
-                            R[row][idx] *= -1;
-                        }
-                        for (let col = 0; col < 3; col += 1) {
-                            Q[idx][col] *= -1;
-                        }
-                    }
-                });
-
-                if (determinant3x3(Q) < 0) {
-                    for (let col = 0; col < 3; col += 1) {
-                        Q[0][col] *= -1;
-                    }
-                    for (let row = 0; row < 3; row += 1) {
-                        R[row][0] *= -1;
-                    }
-                }
-
-                return { upper: R, orthonormal: Q };
-            }
-
-            function normalizeVector(vector, tolerance) {
-                const norm = vectorNorm(vector);
-                if (norm < tolerance) {
-                    throw new Error('Matrice degenerata, impossibile calcolare la posa.');
-                }
-                return vectorScale(vector, 1 / norm);
-            }
-
-            function vectorDot(a, b) {
-                return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-            }
-
-            function vectorSubtract(a, b) {
-                return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-            }
-
-            function vectorScale(vector, scalar) {
-                return [vector[0] * scalar, vector[1] * scalar, vector[2] * scalar];
-            }
-
-            function vectorNorm(vector) {
-                return Math.hypot(vector[0], vector[1], vector[2]);
-            }
-
-            function determinant3x3(matrix) {
-                const [[a, b, c], [d, e, f], [g, h, i]] = matrix;
-                return a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
-            }
-
-            function invert3x3(M, Matrix) {
-                const m = M.to2DArray();
-                const [[a, b, c], [d, e, f], [g, h, i]] = m;
-                const det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
-                if (Math.abs(det) < 1e-9) {
-                    throw new Error('Matrice non invertibile nella stima della posa.');
-                }
-                const inv = [
-                    [(e * i - f * h) / det, (c * h - b * i) / det, (b * f - c * e) / det],
-                    [(f * g - d * i) / det, (a * i - c * g) / det, (c * d - a * f) / det],
-                    [(d * h - e * g) / det, (b * g - a * h) / det, (a * e - b * d) / det]
-                ];
-                return new Matrix(inv);
-            }
-
-            function cameraForwardVector(RMatrix) {
-                const data = RMatrix.to2DArray();
-                const forward = {
-                    x: data[2][0],
-                    y: data[2][1],
-                    z: data[2][2]
-                };
-                const norm = Math.sqrt(forward.x ** 2 + forward.y ** 2 + forward.z ** 2) || 1;
-                return {
-                    x: forward.x / norm,
-                    y: forward.y / norm,
-                    z: forward.z / norm
-                };
-            }
-
-            function computeViewAngles(forward, cameraECEF) {
-                const geo = ecefToGeodetic(cameraECEF.x, cameraECEF.y, cameraECEF.z);
-                const enu = ecefVectorToENU(forward, geo.lat, geo.lng);
-                const heading = (Math.atan2(enu.east, enu.north) * 180 / Math.PI + 360) % 360;
-                const horizontalNorm = Math.sqrt(enu.east ** 2 + enu.north ** 2);
-                const pitch = Math.atan2(enu.up, horizontalNorm) * 180 / Math.PI;
-                const tilt = clamp(90 - pitch, 0, 90);
-                return { heading, tilt };
-            }
-
-            function ecefVectorToENU(vector, latDeg, lonDeg) {
-                const lat = degToRad(latDeg);
-                const lon = degToRad(lonDeg);
-                const sinLat = Math.sin(lat);
-                const cosLat = Math.cos(lat);
-                const sinLon = Math.sin(lon);
-                const cosLon = Math.cos(lon);
-
-                const east = -sinLon * vector.x + cosLon * vector.y;
-                const north = -sinLat * cosLon * vector.x - sinLat * sinLon * vector.y + cosLat * vector.z;
-                const up = cosLat * cosLon * vector.x + cosLat * sinLon * vector.y + sinLat * vector.z;
-                return { east, north, up };
-            }
-
-            function latLngAltToECEF(latDeg, lonDeg, altitudeMeters) {
-                const a = 6378137.0;
-                const e2 = 6.69437999014e-3;
-                const lat = degToRad(latDeg);
-                const lon = degToRad(lonDeg);
-                const cosLat = Math.cos(lat);
-                const sinLat = Math.sin(lat);
-                const cosLon = Math.cos(lon);
-                const sinLon = Math.sin(lon);
-                const N = a / Math.sqrt(1 - e2 * sinLat * sinLat);
-                const x = (N + altitudeMeters) * cosLat * cosLon;
-                const y = (N + altitudeMeters) * cosLat * sinLon;
-                const z = (N * (1 - e2) + altitudeMeters) * sinLat;
-                return { x, y, z };
-            }
-
-            function ecefToGeodetic(x, y, z) {
-                const a = 6378137.0;
-                const e2 = 6.69437999014e-3;
-                const b = a * Math.sqrt(1 - e2);
-                const ep2 = (a * a - b * b) / (b * b);
-                const p = Math.sqrt(x * x + y * y);
-                let theta = Math.atan2(z * a, p * b);
-                let sinTheta = Math.sin(theta);
-                let cosTheta = Math.cos(theta);
-                const lat = Math.atan2(z + ep2 * b * sinTheta * sinTheta * sinTheta,
-                    p - e2 * a * cosTheta * cosTheta * cosTheta);
-                const lon = Math.atan2(y, x);
-                const sinLat = Math.sin(lat);
-                const N = a / Math.sqrt(1 - e2 * sinLat * sinLat);
-                const alt = p / Math.cos(lat) - N;
-                return { lat: radToDeg(lat), lng: radToDeg(lon), altitude: alt };
-            }
-
-            function degToRad(value) {
-                return value * Math.PI / 180;
-            }
-
-            function radToDeg(value) {
-                return value * 180 / Math.PI;
-            }
-
-            function clamp(value, min, max) {
-                return Math.min(Math.max(value, min), max);
-            }
-
-            document.addEventListener('DOMContentLoaded', () => {
-                init();
-                loadMapsApiFromEnv();
-            });
-
-            return {
-                initMap,
-                latLngAltToECEF
-            };
-        })();
-
-        window.initMap = () => ImageLocalizatorApp.initMap();
-    </script>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="status-banner" id="statusBanner">
+      <strong>Pronto:</strong>
+      <span id="statusMessage">carica un'immagine per iniziare a creare corrispondenze 2D ? 3D.</span>
+    </section>
+
+    <section class="panels">
+      <div class="panel image-panel">
+        <h2>Foto di riferimento <span>(2D)</span></h2>
+        <div class="upload-area">
+          <label for="imageInput">Carica immagine...</label>
+          <input type="file" id="imageInput" accept="image/*" />
+          <div class="notice">Clicca sulla foto per aggiungere punti distintivi da collegare alla mappa.</div>
+        </div>
+        <div class="legend">
+          <span><span class="dot image"></span> Punto collegato</span>
+          <span><span class="dot pending"></span> In attesa del punto mappa</span>
+        </div>
+        <div class="image-container" id="imageWrapper">
+          <img id="photo" alt="Foto di riferimento" />
+          <canvas id="photoOverlay"></canvas>
+          <div class="placeholder" id="photoPlaceholder">Carica un'immagine dell'area da localizzare. Clicca sulla foto per iniziare.</div>
+        </div>
+        <div class="controls-row">
+          <button id="clearImagePoints">Cancella punti foto</button>
+          <button id="fitImage">Adatta immagine</button>
+        </div>
+      </div>
+
+      <div class="panel map-panel">
+        <h2>Mappa OpenStreetMap <span>(3D OSM Buildings)</span></h2>
+        <div class="map-container">
+          <div id="map"></div>
+        </div>
+        <div class="notice">Clicca sulla mappa per posizionare il punto corrispondente. I marker sono trascinabili.</div>
+        <div class="controls-row">
+          <button id="zoomIn">Zoom +</button>
+          <button id="zoomOut">Zoom -</button>
+          <button id="tiltUp">Tilt +</button>
+          <button id="tiltDown">Tilt -</button>
+          <button id="rotateLeft">Ruota &larr;</button>
+          <button id="rotateRight">Ruota &rarr;</button>
+          <button id="resetView">Reset vista</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="data-panel">
+      <h2>Associazioni 2D ? 3D</h2>
+      <div class="empty-state" id="emptyState">Servono almeno 6 corrispondenze complete per stimare la posa.</div>
+      <table id="matchesTable" style="display:none;">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Punto foto (px)</th>
+            <th>Coord. mappa</th>
+            <th>Altitudine (m)</th>
+            <th>Azioni</th>
+          </tr>
+        </thead>
+        <tbody id="matchesBody"></tbody>
+      </table>
+      <button class="btn-primary" id="solveButton">Calcola posa fotocamera</button>
+      <div class="results-card" id="resultsCard" style="display:none;">
+        <h3>Risultati stimati</h3>
+        <div class="results-grid">
+          <div class="metric"><span>Latitudine</span><strong id="resultLat">-</strong></div>
+          <div class="metric"><span>Longitudine</span><strong id="resultLng">-</strong></div>
+          <div class="metric"><span>Altitudine</span><strong id="resultAlt">-</strong></div>
+          <div class="metric"><span>Heading</span><strong id="resultHeading">-</strong></div>
+          <div class="metric"><span>Tilt</span><strong id="resultTilt">-</strong></div>
+          <div class="metric"><span>Errore medio</span><strong id="resultReproj">-</strong></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/osmbuildings@latest/dist/OSMBuildings-Leaflet.js" crossorigin="" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/ml-matrix@6.10.4/matrix.umd.js" defer></script>
+  <script defer>
+    const ImageLocalizatorApp = (() => {
+      'use strict';
+      const THEME_VARIABLES = [
+        { key: '--bg', label: 'Sfondo principale', defaultValue: '#050c1e' },
+        { key: '--panel', label: 'Pannelli', defaultValue: '#111c3a' },
+        { key: '--panel-2', label: 'Sfondo secondario', defaultValue: '#0f1a34' },
+        { key: '--accent', label: 'Accento', defaultValue: '#38bdf8' },
+        { key: '--text', label: 'Testo principale', defaultValue: '#f8fafc' },
+        { key: '--muted', label: 'Testo secondario', defaultValue: '#b0c4ff' },
+        { key: '--border', label: 'Bordi', defaultValue: '#24345a' },
+        { key: '--danger', label: 'Avvisi', defaultValue: '#f43f5e' }
+      ];
+      const THEME_PRESETS = {
+        aurora: {
+          label: 'Aurora',
+          values: {
+            '--bg': '#050c1e',
+            '--panel': '#111c3a',
+            '--panel-2': '#0f1a34',
+            '--accent': '#38bdf8',
+            '--text': '#f8fafc',
+            '--muted': '#b0c4ff',
+            '--border': '#24345a',
+            '--danger': '#f43f5e'
+          }
+        },
+        dusk: {
+          label: 'Tramonto',
+          values: {
+            '--bg': '#1a1035',
+            '--panel': '#211347',
+            '--panel-2': '#2c1a5a',
+            '--accent': '#ff9f43',
+            '--text': '#fdf2f8',
+            '--muted': '#f5c8ff',
+            '--border': '#412060',
+            '--danger': '#f87171'
+          }
+        },
+        forest: {
+          label: 'Foresta',
+          values: {
+            '--bg': '#0b1c17',
+            '--panel': '#142822',
+            '--panel-2': '#1c3a31',
+            '--accent': '#34d399',
+            '--text': '#ecfdf5',
+            '--muted': '#a7f3d0',
+            '--border': '#1f4b3c',
+            '--danger': '#f8b4b4'
+          }
+        },
+        graphite: {
+          label: 'Grafite',
+          values: {
+            '--bg': '#0b0d10',
+            '--panel': '#14171c',
+            '--panel-2': '#1c2128',
+            '--accent': '#3b82f6',
+            '--text': '#f3f4f6',
+            '--muted': '#9ca3af',
+            '--border': '#272b33',
+            '--danger': '#f87272'
+          }
+        }
+      };
+      const STORAGE_KEYS = {
+        activeTheme: 'imageLocalizator.theme.active',
+        customThemes: 'imageLocalizator.theme.custom'
+      };
+      const state = {
+        correspondences: [],
+        nextId: 1,
+        pending: null,
+        image: {
+          element: null,
+          overlay: null,
+          ctx: null,
+          naturalWidth: 0,
+          naturalHeight: 0
+        },
+        map: {
+          instance: null,
+          markers: null,
+          osmb: null,
+          defaultView: { center: [48.85837, 2.29448], zoom: 18 },
+          view: { tilt: 45, rotation: 0 }
+        },
+        theme: {
+          active: 'aurora',
+          custom: {}
+        },
+        config: {
+          storageAvailable: false
+        }
+      };
+      const dom = {};
+      function cacheDom() {
+        dom.imageInput = document.getElementById('imageInput');
+        dom.imageWrapper = document.getElementById('imageWrapper');
+        dom.photo = document.getElementById('photo');
+        dom.overlay = document.getElementById('photoOverlay');
+        dom.placeholder = document.getElementById('photoPlaceholder');
+        dom.clear = document.getElementById('clearImagePoints');
+        dom.fit = document.getElementById('fitImage');
+        dom.statusBanner = document.getElementById('statusBanner');
+        dom.statusMessage = document.getElementById('statusMessage');
+        dom.matchesTable = document.getElementById('matchesTable');
+        dom.matchesBody = document.getElementById('matchesBody');
+        dom.emptyState = document.getElementById('emptyState');
+        dom.solve = document.getElementById('solveButton');
+        dom.resultsCard = document.getElementById('resultsCard');
+        dom.resultLat = document.getElementById('resultLat');
+        dom.resultLng = document.getElementById('resultLng');
+        dom.resultAlt = document.getElementById('resultAlt');
+        dom.resultHeading = document.getElementById('resultHeading');
+        dom.resultTilt = document.getElementById('resultTilt');
+        dom.resultReproj = document.getElementById('resultReproj');
+        dom.zoomIn = document.getElementById('zoomIn');
+        dom.zoomOut = document.getElementById('zoomOut');
+        dom.tiltUp = document.getElementById('tiltUp');
+        dom.tiltDown = document.getElementById('tiltDown');
+        dom.rotateLeft = document.getElementById('rotateLeft');
+        dom.rotateRight = document.getElementById('rotateRight');
+        dom.resetView = document.getElementById('resetView');
+        dom.themeButton = document.getElementById('themeButton');
+        dom.themePanel = document.getElementById('themePanel');
+        dom.themeClose = document.getElementById('themeClose');
+        dom.themePresetList = document.getElementById('themePresetList');
+        dom.customThemeList = document.getElementById('customThemeList');
+        dom.customThemeForm = document.getElementById('customThemeForm');
+        dom.customThemeFields = document.getElementById('customThemeFields');
+        dom.customThemeName = document.getElementById('customThemeName');
+        dom.clearCustomThemes = document.getElementById('clearCustomThemes');
+      }
+      function safeAddEventListener(element, eventName, handler) {
+        if (element && typeof element.addEventListener === 'function') {
+          element.addEventListener(eventName, handler);
+        }
+      }
+      function init() {
+        if (!window.mlMatrix || !window.L) {
+          alert('Librerie necessarie non disponibili.');
+          return;
+        }
+        cacheDom();
+        initializeStorage();
+        initializeThemeManager();
+        state.image.element = dom.photo;
+        state.image.overlay = dom.overlay;
+        state.image.ctx = dom.overlay.getContext('2d');
+        safeAddEventListener(dom.imageInput, 'change', handleImageSelection);
+        safeAddEventListener(dom.imageWrapper, 'click', handleImageClick);
+        safeAddEventListener(dom.clear, 'click', () => clearPoints());
+        safeAddEventListener(dom.fit, 'click', () => fitImage(true));
+        safeAddEventListener(dom.matchesBody, 'click', handleTableClick);
+        safeAddEventListener(dom.matchesBody, 'input', handleTableChange);
+        safeAddEventListener(dom.solve, 'click', computePose);
+        safeAddEventListener(dom.zoomIn, 'click', () => adjustZoom(1));
+        safeAddEventListener(dom.zoomOut, 'click', () => adjustZoom(-1));
+        safeAddEventListener(dom.tiltUp, 'click', () => adjustTilt(5));
+        safeAddEventListener(dom.tiltDown, 'click', () => adjustTilt(-5));
+        safeAddEventListener(dom.rotateLeft, 'click', () => adjustRotation(-10));
+        safeAddEventListener(dom.rotateRight, 'click', () => adjustRotation(10));
+        safeAddEventListener(dom.resetView, 'click', resetView);
+        window.addEventListener('resize', syncOverlaySize);
+        if (state.image.element) {
+          state.image.element.addEventListener('load', () => {
+            state.image.naturalWidth = state.image.element.naturalWidth;
+            state.image.naturalHeight = state.image.element.naturalHeight;
+            dom.placeholder.style.display = 'none';
+            state.image.element.style.display = 'block';
+            syncOverlaySize();
+            drawOverlay();
+            pushStatus('Immagine caricata. Seleziona un punto.', false);
+          });
+        }
+        initMap();
+      }
+      function initializeStorage() {
+        try {
+          const testKey = '__image_localizator__';
+          localStorage.setItem(testKey, '1');
+          localStorage.removeItem(testKey);
+          state.config.storageAvailable = true;
+        } catch (error) {
+          state.config.storageAvailable = false;
+        }
+      }
+      function initMap() {
+        state.map.instance = L.map('map', { zoomControl: false })
+          .setView(state.map.defaultView.center, state.map.defaultView.zoom);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 20,
+          attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(state.map.instance);
+        L.control.zoom({ position: 'bottomright' }).addTo(state.map.instance);
+        state.map.markers = L.layerGroup().addTo(state.map.instance);
+        if (window.OSMBuildings) {
+          state.map.osmb = new OSMBuildings(state.map.instance);
+          state.map.osmb.setTilt(state.map.view.tilt);
+          state.map.osmb.setRotation(state.map.view.rotation);
+          state.map.osmb.load();
+        }
+        state.map.instance.on('click', (event) => {
+          if (event.latlng) handleMapClick(event.latlng);
+        });
+        pushStatus('Mappa OSM pronta. Clicca sulla foto, poi sulla mappa.', false);
+      }
+      function handleImageSelection(event) {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        state.image.element.src = URL.createObjectURL(file);
+        clearPoints(true);
+        dom.resultsCard.style.display = 'none';
+      }
+      function handleImageClick(event) {
+        if (!state.image.naturalWidth) return;
+        const rect = state.image.element.getBoundingClientRect();
+        if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) return;
+        const relativeX = (event.clientX - rect.left) / rect.width;
+        const relativeY = (event.clientY - rect.top) / rect.height;
+        const x = relativeX * state.image.naturalWidth;
+        const y = relativeY * state.image.naturalHeight;
+        const id = state.nextId++;
+        const entry = { id, imagePoint: { x, y }, mapPoint: null, marker: null };
+        state.correspondences.push(entry);
+        state.pending = { id };
+        updateTable();
+        drawOverlay();
+        highlightPending(id);
+        pushStatus(`Punto #${id} aggiunto. Ora selezionalo sulla mappa.`, false);
+      }
+      function handleMapClick(latlng) {
+        if (!state.pending) {
+          pushStatus('Seleziona prima un punto sulla foto.', true);
+          return;
+        }
+        const entry = state.correspondences.find((item) => item.id === state.pending.id);
+        if (!entry) {
+          state.pending = null;
+          return;
+        }
+        if (entry.marker) {
+          state.map.markers.removeLayer(entry.marker);
+        }
+        const altitude = entry.mapPoint?.altitude ?? 0;
+        entry.mapPoint = {
+          lat: latlng.lat,
+          lng: latlng.lng,
+          altitude,
+          ecef: latLngAltToECEF(latlng.lat, latlng.lng, altitude)
+        };
+        entry.marker = L.marker(latlng, { draggable: true }).addTo(state.map.markers);
+        entry.marker.bindTooltip(`#${entry.id}`, { permanent: true, direction: 'top', offset: [0, -12] });
+        entry.marker.on('dragend', (event) => {
+          const position = event.target.getLatLng();
+          entry.mapPoint.lat = position.lat;
+          entry.mapPoint.lng = position.lng;
+          entry.mapPoint.ecef = latLngAltToECEF(position.lat, position.lng, entry.mapPoint.altitude ?? 0);
+          updateTable();
+        });
+        state.pending = null;
+        updateTable();
+        drawOverlay();
+        pushStatus(`Punto #${entry.id} collegato.`, false);
+      }
+      function clearPoints(skipStatus = false) {
+        state.correspondences.forEach((entry) => {
+          if (entry.marker) state.map.markers.removeLayer(entry.marker);
+        });
+        state.correspondences = [];
+        state.pending = null;
+        state.nextId = 1;
+        updateTable();
+        drawOverlay();
+        dom.resultsCard.style.display = 'none';
+        if (!skipStatus) {
+          pushStatus('Punti rimossi.', false);
+        }
+      }
+      function fitImage(notify) {
+        if (!state.image.naturalWidth) return;
+        state.image.element.style.width = '100%';
+        state.image.element.style.height = 'auto';
+        syncOverlaySize();
+        if (notify) pushStatus('Immagine adattata al contenitore.', false);
+      }
+      function syncOverlaySize() {
+        if (!state.image.naturalWidth) return;
+        const rect = state.image.element.getBoundingClientRect();
+        state.image.overlay.width = rect.width;
+        state.image.overlay.height = rect.height;
+        state.image.overlay.style.width = `${rect.width}px`;
+        state.image.overlay.style.height = `${rect.height}px`;
+        drawOverlay();
+      }
+      function drawOverlay() {
+        const ctx = state.image.ctx;
+        if (!ctx) return;
+        ctx.clearRect(0, 0, state.image.overlay.width, state.image.overlay.height);
+        ctx.lineWidth = 2;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        state.correspondences.forEach((entry) => {
+          if (!entry.imagePoint) return;
+          const { x, y } = toDisplay(entry.imagePoint);
+          const pending = state.pending?.id === entry.id;
+          ctx.fillStyle = pending ? '#f97316' : '#38bdf8';
+          ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+          ctx.beginPath();
+          ctx.arc(x, y, 7, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = '#04122e';
+          ctx.font = '600 11px "Segoe UI"';
+          ctx.fillText(entry.id, x, y + 0.5);
+        });
+      }
+      function toDisplay(point) {
+        const rect = state.image.element.getBoundingClientRect();
+        return {
+          x: point.x * (rect.width / state.image.naturalWidth),
+          y: point.y * (rect.height / state.image.naturalHeight)
+        };
+      }
+      function updateTable() {
+        dom.matchesBody.innerHTML = '';
+        if (!state.correspondences.length) {
+          dom.matchesTable.style.display = 'none';
+          dom.emptyState.style.display = 'block';
+          return;
+        }
+        dom.matchesTable.style.display = 'table';
+        dom.emptyState.style.display = 'none';
+        state.correspondences.forEach((entry) => {
+          const tr = document.createElement('tr');
+          tr.dataset.id = entry.id.toString();
+          const coords = entry.mapPoint
+            ? `<div>Lat: ${entry.mapPoint.lat.toFixed(6)}</div><div>Lng: ${entry.mapPoint.lng.toFixed(6)}</div>`
+            : '<div class="secondary">Clicca sulla mappa</div>';
+          const altitude = entry.mapPoint?.altitude ?? '';
+          tr.innerHTML = `
+            <td><span class="badge">${entry.id}</span></td>
+            <td>${entry.imagePoint.x.toFixed(1)}, ${entry.imagePoint.y.toFixed(1)}</td>
+            <td>${coords}</td>
+            <td><input type="number" class="altitude-input" data-id="${entry.id}" value="${altitude}" step="0.1" placeholder="Alt"></td>
+            <td><button data-action="remove" data-id="${entry.id}">Rimuovi</button></td>
+          `;
+          dom.matchesBody.appendChild(tr);
+        });
+        if (state.pending) highlightPending(state.pending.id);
+      }
+      function highlightPending(id) {
+        dom.matchesBody.querySelectorAll('tr').forEach((row) => {
+          row.style.background = Number(row.dataset.id) === id ? 'rgba(249,115,22,0.18)' : '';
+        });
+      }
+      function handleTableClick(event) {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) return;
+        if (target.dataset.action === 'remove') {
+          removeCorrespondence(Number(target.dataset.id));
+        }
+      }
+      function handleTableChange(event) {
+        const target = event.target;
+        if (!(target instanceof HTMLInputElement)) return;
+        if (!target.classList.contains('altitude-input')) return;
+        const id = Number(target.dataset.id);
+        const value = Number(target.value);
+        if (Number.isNaN(value)) return;
+        const entry = state.correspondences.find((item) => item.id === id);
+        if (entry && entry.mapPoint) {
+          entry.mapPoint.altitude = value;
+          entry.mapPoint.ecef = latLngAltToECEF(entry.mapPoint.lat, entry.mapPoint.lng, value);
+        }
+      }
+      function removeCorrespondence(id) {
+        const index = state.correspondences.findIndex((entry) => entry.id === id);
+        if (index === -1) return;
+        const [removed] = state.correspondences.splice(index, 1);
+        if (removed?.marker) {
+          state.map.markers.removeLayer(removed.marker);
+        }
+        if (state.pending?.id === id) {
+          state.pending = null;
+        }
+        updateTable();
+        drawOverlay();
+        pushStatus(`Corrispondenza #${id} rimossa.`, false);
+      }
+      function pushStatus(message, isError) {
+        dom.statusBanner.style.background = isError ? 'rgba(244,63,94,0.18)' : 'rgba(56,189,248,0.12)';
+        dom.statusBanner.style.borderColor = isError ? 'rgba(244,63,94,0.4)' : 'rgba(56,189,248,0.4)';
+        dom.statusMessage.textContent = message;
+      }
+      function adjustZoom(delta) {
+        if (!state.map.instance) return;
+        state.map.instance.setZoom(state.map.instance.getZoom() + delta);
+      }
+
+      function adjustTilt(delta) {
+        if (!state.map.osmb) return;
+        state.map.view.tilt = Math.max(0, Math.min(60, state.map.view.tilt + delta));
+        state.map.osmb.setTilt(state.map.view.tilt);
+      }
+
+      function adjustRotation(delta) {
+        if (!state.map.osmb) return;
+        state.map.view.rotation = (state.map.view.rotation + delta + 360) % 360;
+        state.map.osmb.setRotation(state.map.view.rotation);
+      }
+
+      function resetView() {
+        if (!state.map.instance) return;
+        state.map.instance.setView(state.map.defaultView.center, state.map.defaultView.zoom);
+        if (state.map.osmb) {
+          state.map.view.tilt = 45;
+          state.map.view.rotation = 0;
+          state.map.osmb.setTilt(state.map.view.tilt);
+          state.map.osmb.setRotation(state.map.view.rotation);
+        }
+      }
+
+      function initializeThemeManager() {
+        if (!dom.themeButton || !dom.themePanel) {
+          return;
+        }
+        buildCustomThemeFields();
+        if (state.config.storageAvailable) {
+          state.theme.custom = loadCustomThemes();
+          const storedActive = localStorage.getItem(STORAGE_KEYS.activeTheme);
+          if (storedActive && (THEME_PRESETS[storedActive] || state.theme.custom[storedActive])) {
+            state.theme.active = storedActive;
+          }
+        }
+        applyTheme(state.theme.active);
+        renderThemeLists();
+        safeAddEventListener(dom.themeButton, 'click', toggleThemePanel);
+        safeAddEventListener(dom.themeClose, 'click', () => closeThemePanel(true));
+        safeAddEventListener(dom.themePresetList, 'click', handleThemeChipClick);
+        safeAddEventListener(dom.customThemeList, 'click', handleThemeChipClick);
+        safeAddEventListener(dom.customThemeForm, 'submit', handleCustomThemeSubmit);
+        safeAddEventListener(dom.clearCustomThemes, 'click', clearAllCustomThemes);
+        document.addEventListener('click', handleThemeOutsideClick);
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape') {
+            closeThemePanel();
+          }
+        });
+      }
+
+      function buildCustomThemeFields() {
+        if (!dom.customThemeFields) {
+          return;
+        }
+        dom.customThemeFields.innerHTML = '';
+        THEME_VARIABLES.forEach(({ key, label, defaultValue }) => {
+          const wrapper = document.createElement('div');
+          wrapper.className = 'theme-color-picker';
+          const inputId = `theme-color-${key.replace(/^-+/, '')}`;
+          wrapper.innerHTML = `
+            <label for="${inputId}">${label}</label>
+            <input type="color" id="${inputId}" data-variable="${key}" value="${defaultValue}">
+          `;
+          dom.customThemeFields.appendChild(wrapper);
+        });
+        populateCustomThemeFields();
+      }
+
+      function populateCustomThemeFields(values) {
+        if (!dom.customThemeFields) {
+          return;
+        }
+        const themeValues = values || getThemeDefinition(state.theme.active)?.values || {};
+        THEME_VARIABLES.forEach(({ key, defaultValue }) => {
+          const input = dom.customThemeFields.querySelector(`[data-variable="${key}"]`);
+          if (!input) {
+            return;
+          }
+          const value = themeValues[key] || defaultValue || '#000000';
+          input.value = normalizeColor(value, defaultValue || '#000000');
+        });
+      }
+
+      function renderThemeLists() {
+        if (!dom.themePresetList || !dom.customThemeList) {
+          return;
+        }
+        dom.themePresetList.innerHTML = '';
+        Object.entries(THEME_PRESETS).forEach(([name, definition]) => {
+          dom.themePresetList.appendChild(createThemeChip(name, definition, false));
+        });
+        dom.customThemeList.innerHTML = '';
+        const customEntries = Object.entries(state.theme.custom);
+        customEntries.forEach(([name, definition]) => {
+          dom.customThemeList.appendChild(createThemeChip(name, definition, true));
+        });
+        const isEmpty = customEntries.length === 0;
+        dom.customThemeList.dataset.empty = isEmpty ? 'true' : 'false';
+        if (dom.clearCustomThemes) {
+          dom.clearCustomThemes.hidden = isEmpty;
+        }
+      }
+
+      function createThemeChip(name, definition, isCustom) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'theme-chip';
+        wrapper.dataset.theme = name;
+        wrapper.dataset.active = state.theme.active === name ? 'true' : 'false';
+        const selectButton = document.createElement('button');
+        selectButton.type = 'button';
+        selectButton.className = 'theme-chip__select';
+        selectButton.dataset.themeSelect = name;
+        selectButton.textContent = definition.label || name;
+        wrapper.appendChild(selectButton);
+        if (isCustom) {
+          const deleteButton = document.createElement('button');
+          deleteButton.type = 'button';
+          deleteButton.className = 'theme-chip__delete';
+          deleteButton.dataset.themeDelete = name;
+          deleteButton.setAttribute('aria-label', `Elimina il tema ${definition.label || name}`);
+          deleteButton.textContent = '×';
+          wrapper.appendChild(deleteButton);
+        }
+        return wrapper;
+      }
+
+      function handleThemeChipClick(event) {
+        const deleteBtn = event.target.closest('[data-theme-delete]');
+        if (deleteBtn) {
+          const themeName = deleteBtn.dataset.themeDelete;
+          delete state.theme.custom[themeName];
+          saveCustomThemes();
+          if (state.theme.active === themeName) {
+            applyTheme('aurora');
+          } else {
+            renderThemeLists();
+          }
+          return;
+        }
+        const selectBtn = event.target.closest('[data-theme-select]');
+        if (selectBtn) {
+          applyTheme(selectBtn.dataset.themeSelect);
+          closeThemePanel();
+        }
+      }
+
+      function handleCustomThemeSubmit(event) {
+        event.preventDefault();
+        if (!dom.customThemeName) {
+          return;
+        }
+        const label = dom.customThemeName.value.trim();
+        if (!label) {
+          dom.customThemeName.focus();
+          return;
+        }
+        const themeValues = {};
+        THEME_VARIABLES.forEach(({ key, defaultValue }) => {
+          const input = dom.customThemeFields.querySelector(`[data-variable="${key}"]`);
+          themeValues[key] = (input?.value || defaultValue).trim();
+        });
+        const themeId = generateThemeId(label);
+        state.theme.custom[themeId] = { label, values: themeValues };
+        saveCustomThemes();
+        dom.customThemeForm.reset();
+        populateCustomThemeFields(themeValues);
+        renderThemeLists();
+        applyTheme(themeId);
+      }
+
+      function clearAllCustomThemes() {
+        if (!Object.keys(state.theme.custom).length) {
+          return;
+        }
+        if (!confirm('Vuoi eliminare tutti i temi personalizzati?')) {
+          return;
+        }
+        state.theme.custom = {};
+        saveCustomThemes();
+        renderThemeLists();
+      }
+
+      function toggleThemePanel() {
+        setThemePanelVisibility(dom.themePanel?.hidden);
+      }
+
+      function closeThemePanel(focusButton = false) {
+        setThemePanelVisibility(false, focusButton);
+      }
+
+      function setThemePanelVisibility(isVisible, focusButton = false) {
+        if (!dom.themePanel || !dom.themeButton) {
+          return;
+        }
+        if (isVisible) {
+          dom.themePanel.hidden = false;
+          dom.themePanel.classList.add('theme-panel--open');
+          dom.themeButton.setAttribute('aria-expanded', 'true');
+          populateCustomThemeFields();
+        } else {
+          dom.themePanel.hidden = true;
+          dom.themePanel.classList.remove('theme-panel--open');
+          dom.themeButton.setAttribute('aria-expanded', 'false');
+          if (focusButton) {
+            dom.themeButton.focus();
+          }
+        }
+      }
+
+      function handleThemeOutsideClick(event) {
+        if (!dom.themePanel || dom.themePanel.hidden) {
+          return;
+        }
+        const insidePanel = dom.themePanel.contains(event.target);
+        const onButton = dom.themeButton?.contains(event.target);
+        if (!insidePanel && !onButton) {
+          closeThemePanel();
+        }
+      }
+
+      function applyTheme(themeName) {
+        const definition = getThemeDefinition(themeName);
+        if (!definition) {
+          return;
+        }
+        Object.entries(definition.values).forEach(([variable, value]) => {
+          document.documentElement.style.setProperty(variable, value);
+        });
+        state.theme.active = themeName;
+        if (state.config.storageAvailable) {
+          localStorage.setItem(STORAGE_KEYS.activeTheme, themeName);
+        }
+        renderThemeLists();
+        populateCustomThemeFields(definition.values);
+      }
+
+      function getThemeDefinition(name) {
+        return THEME_PRESETS[name] || state.theme.custom[name] || null;
+      }
+
+      function saveCustomThemes() {
+        if (!state.config.storageAvailable) {
+          return;
+        }
+        localStorage.setItem(STORAGE_KEYS.customThemes, JSON.stringify(state.theme.custom));
+      }
+
+      function loadCustomThemes() {
+        if (!state.config.storageAvailable) {
+          return {};
+        }
+        try {
+          const stored = localStorage.getItem(STORAGE_KEYS.customThemes);
+          return stored ? JSON.parse(stored) : {};
+        } catch (error) {
+          return {};
+        }
+      }
+
+      function normalizeColor(value, fallback) {
+        const trimmed = (value || '').trim();
+        if (trimmed.startsWith('#') && (trimmed.length === 7 || trimmed.length === 4)) {
+          return trimmed.length === 4
+            ? `#${trimmed[1]}${trimmed[1]}${trimmed[2]}${trimmed[2]}${trimmed[3]}${trimmed[3]}`
+            : trimmed;
+        }
+        return fallback || '#000000';
+      }
+
+      function generateThemeId(label) {
+        const base = label
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-+|-+$/g, '') || 'tema';
+        let candidate = base;
+        let counter = 1;
+        while (THEME_PRESETS[candidate] || state.theme.custom[candidate]) {
+          candidate = `${base}-${counter++}`;
+        }
+        return candidate;
+      }
+      function computePose() {
+        if (!window.mlMatrix) {
+          pushStatus('ml-matrix non disponibile: impossibile stimare la posa.', true);
+          return;
+        }
+        const usable = state.correspondences.filter((entry) => entry.imagePoint && entry.mapPoint?.ecef);
+        if (usable.length < 6) {
+          pushStatus('Servono almeno 6 corrispondenze complete per stimare la posa.', true);
+          return;
+        }
+        try {
+          const { Matrix, SVD } = window.mlMatrix;
+          const Adata = [];
+          usable.forEach((entry) => {
+            const { x, y } = entry.imagePoint;
+            const { x: X, y: Y, z: Z } = entry.mapPoint.ecef;
+            Adata.push([X, Y, Z, 1, 0, 0, 0, 0, -x * X, -x * Y, -x * Z, -x]);
+            Adata.push([0, 0, 0, 0, X, Y, Z, 1, -y * X, -y * Y, -y * Z, -y]);
+          });
+          const A = new Matrix(Adata);
+          const svd = new SVD(A);
+          const V = svd.rightSingularVectors;
+          const h = V.getColumn(V.columns - 1);
+          const P = Matrix.from1DArray(3, 4, h);
+          const M = P.subMatrix(0, 2, 0, 2);
+          const p4 = P.subMatrix(0, 2, 3, 3);
+          const Minv = invert3x3(M, Matrix);
+          const c = Minv.mmul(p4);
+          const cameraECEF = { x: -c.get(0, 0), y: -c.get(1, 0), z: -c.get(2, 0) };
+          const geo = ecefToGeodetic(cameraECEF.x, cameraECEF.y, cameraECEF.z);
+          dom.resultLat.textContent = `${geo.lat.toFixed(6)}?`;
+          dom.resultLng.textContent = `${geo.lng.toFixed(6)}?`;
+          dom.resultAlt.textContent = `${geo.altitude.toFixed(2)} m`;
+          try {
+            const { R } = decomposeKR(M, Matrix);
+            const forward = cameraForwardVector(R);
+            const { heading, tilt } = computeViewAngles(forward, cameraECEF);
+            dom.resultHeading.textContent = `${heading.toFixed(1)}?`;
+            dom.resultTilt.textContent = `${tilt.toFixed(1)}?`;
+          } catch (orientationError) {
+            dom.resultHeading.textContent = 'n/d';
+            dom.resultTilt.textContent = 'n/d';
+          }
+          const reprojectionError = computeReprojectionError(P, usable);
+          dom.resultReproj.textContent = `${reprojectionError.toFixed(2)} px`;
+          dom.resultsCard.style.display = 'grid';
+          pushStatus('Posa stimata. Verifica i risultati.', false);
+        } catch (error) {
+          console.error(error);
+          pushStatus('Errore nel calcolo della posa.', true);
+        }
+      }
+      function computeReprojectionError(P, correspondences) {
+        const { Matrix } = window.mlMatrix;
+        let total = 0;
+        let count = 0;
+        correspondences.forEach((entry) => {
+          const world = entry.mapPoint.ecef;
+          const point = Matrix.columnVector([world.x, world.y, world.z, 1]);
+          const projected = P.mmul(point);
+          const w = projected.get(2, 0);
+          if (Math.abs(w) < 1e-9) return;
+          const x = projected.get(0, 0) / w;
+          const y = projected.get(1, 0) / w;
+          total += Math.hypot(x - entry.imagePoint.x, y - entry.imagePoint.y);
+          count += 1;
+        });
+        return count ? total / count : 0;
+      }
+      function decomposeKR(M, Matrix) {
+        const J = new Matrix([
+          [0, 0, 1],
+          [0, 1, 0],
+          [1, 0, 0]
+        ]);
+        const QR = new window.mlMatrix.QRDecomposition(J.mmul(M.transpose()));
+        let R = QR.QR.transpose().mmul(J);
+        let K = J.mmul(QR.R.transpose()).mmul(J);
+        const diagSigns = [K.get(0, 0), K.get(1, 1), K.get(2, 2)].map((value) => (value < 0 ? -1 : 1));
+        const signMatrix = Matrix.diag(diagSigns);
+        K = K.mmul(signMatrix);
+        R = signMatrix.mmul(R);
+        const scale = K.get(2, 2);
+        if (scale !== 0) {
+          K = K.mul(1 / scale);
+        }
+        if (R.det() < 0) {
+          R = R.mul(-1);
+          K = K.mul(-1);
+        }
+        return { K, R };
+      }
+      function cameraForwardVector(R) {
+        const Rt = R.transpose();
+        const forward = {
+          x: Rt.get(0, 2),
+          y: Rt.get(1, 2),
+          z: Rt.get(2, 2)
+        };
+        const norm = Math.sqrt(forward.x ** 2 + forward.y ** 2 + forward.z ** 2) || 1;
+        return {
+          x: forward.x / norm,
+          y: forward.y / norm,
+          z: forward.z / norm
+        };
+      }
+      function computeViewAngles(forward, cameraECEF) {
+        const geo = ecefToGeodetic(cameraECEF.x, cameraECEF.y, cameraECEF.z);
+        const enu = ecefVectorToENU(forward, geo.lat, geo.lng);
+        const heading = (Math.atan2(enu.east, enu.north) * 180 / Math.PI + 360) % 360;
+        const horizontal = Math.sqrt(enu.east ** 2 + enu.north ** 2);
+        const pitch = Math.atan2(enu.up, horizontal) * 180 / Math.PI;
+        const tilt = Math.max(0, Math.min(90, 90 - pitch));
+        return { heading, tilt };
+      }
+      function ecefVectorToENU(vector, latDeg, lonDeg) {
+        const lat = degToRad(latDeg);
+        const lon = degToRad(lonDeg);
+        const sinLat = Math.sin(lat);
+        const cosLat = Math.cos(lat);
+        const sinLon = Math.sin(lon);
+        const cosLon = Math.cos(lon);
+        const east = -sinLon * vector.x + cosLon * vector.y;
+        const north = -sinLat * cosLon * vector.x - sinLat * sinLon * vector.y + cosLat * vector.z;
+        const up = cosLat * cosLon * vector.x + cosLat * sinLon * vector.y + sinLat * vector.z;
+        return { east, north, up };
+      }
+      function latLngAltToECEF(latDeg, lonDeg, altitude) {
+        const a = 6378137.0;
+        const e2 = 6.69437999014e-3;
+        const lat = degToRad(latDeg);
+        const lon = degToRad(lonDeg);
+        const cosLat = Math.cos(lat);
+        const sinLat = Math.sin(lat);
+        const cosLon = Math.cos(lon);
+        const sinLon = Math.sin(lon);
+        const N = a / Math.sqrt(1 - e2 * sinLat * sinLat);
+        const x = (N + altitude) * cosLat * cosLon;
+        const y = (N + altitude) * cosLat * sinLon;
+        const z = (N * (1 - e2) + altitude) * sinLat;
+        return { x, y, z };
+      }
+      function ecefToGeodetic(x, y, z) {
+        const a = 6378137.0;
+        const e2 = 6.69437999014e-3;
+        const b = a * Math.sqrt(1 - e2);
+        const ep2 = (a * a - b * b) / (b * b);
+        const p = Math.sqrt(x * x + y * y);
+        const theta = Math.atan2(z * a, p * b);
+        const sinTheta = Math.sin(theta);
+        const cosTheta = Math.cos(theta);
+        const lat = Math.atan2(z + ep2 * b * sinTheta ** 3, p - e2 * a * cosTheta ** 3);
+        const lon = Math.atan2(y, x);
+        const sinLat = Math.sin(lat);
+        const N = a / Math.sqrt(1 - e2 * sinLat * sinLat);
+        const alt = p / Math.cos(lat) - N;
+        return { lat: radToDeg(lat), lng: radToDeg(lon), altitude: alt };
+      }
+      function invert3x3(M, Matrix) {
+        const m = M.to2DArray();
+        const [[a, b, c], [d, e, f], [g, h, i]] = m;
+        const det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+        if (Math.abs(det) < 1e-9) throw new Error('Matrice non invertibile');
+        const inv = [
+          [(e * i - f * h) / det, (c * h - b * i) / det, (b * f - c * e) / det],
+          [(f * g - d * i) / det, (a * i - c * g) / det, (c * d - a * f) / det],
+          [(d * h - e * g) / det, (b * g - a * h) / det, (a * e - b * d) / det]
+        ];
+        return new Matrix(inv);
+      }
+      function degToRad(value) { return value * Math.PI / 180; }
+      function radToDeg(value) { return value * 180 / Math.PI; }
+      document.addEventListener('DOMContentLoaded', () => ImageLocalizatorApp.init());
+      return { init };
+    })();
+  </script>
 </body>
 </html>
