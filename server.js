@@ -3,6 +3,7 @@ const multer = require('multer');
 const path = require('path');
 const cors = require('cors');
 const fs = require('fs');
+const util = require('util');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -97,6 +98,24 @@ app.post('/api/save-coordinates', (req, res) => {
     } catch (error) {
         console.error('Errore durante il salvataggio delle coordinate:', error);
         res.status(500).json({ error: 'Errore durante il salvataggio delle coordinate' });
+    }
+});
+
+app.post('/api/log', (req, res) => {
+    try {
+        const { level = 'info', message = '', details = null } = req.body || {};
+        const timestamp = new Date().toISOString();
+        const prefix = `[client][${timestamp}][${String(level).toUpperCase()}]`;
+        const logPayload = details !== null && typeof details !== 'undefined'
+            ? util.inspect(details, { depth: 3, colors: false })
+            : '';
+        const output = `${prefix} ${message} ${logPayload}`.trim();
+        const consoleLevel = ['error', 'warn', 'info'].includes(level) ? level : 'log';
+        console[consoleLevel](output);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Errore durante la registrazione del log client:', error);
+        res.status(500).json({ success: false });
     }
 });
 

@@ -166,6 +166,11 @@
   <script defer>
     const ImageLocalizatorApp = (() => {
       'use strict';
+      const LOGGING_CONFIG = {
+        enabled: true,
+        endpoint: '/api/log',
+        useBeacon: true
+      };
       const THEME_VARIABLES = [
         { key: '--bg', label: 'Sfondo principale', defaultValue: '#050c1e' },
         { key: '--panel', label: 'Pannelli', defaultValue: '#111c3a' },
@@ -324,6 +329,7 @@
           alert('Librerie necessarie non disponibili.');
           return;
         }
+        initializeRemoteConsole();
         cacheDom();
         initializeStorage();
         initializeThemeManager();
@@ -1409,8 +1415,94 @@
       document.addEventListener('DOMContentLoaded', () => ImageLocalizatorApp.init());
       return { init };
     })();
+
+      function initializeRemoteConsole() {
+        if (!LOGGING_CONFIG.enabled || typeof window === 'undefined' || window.__REMOTE_CONSOLE_PATCHED__) {
+          return;
+        }
+        window.__REMOTE_CONSOLE_PATCHED__ = true;
+        const methods = ['log', 'info', 'warn', 'error'];
+        const originalConsole = Object.fromEntries(
+          methods.map((method) => [method, console[method]?.bind(console) || console.log.bind(console)])
+        );
+
+        function formatLogValue(value) {
+          if (value === null || value === undefined) return String(value);
+          if (typeof value === 'string') return value;
+          if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') return String(value);
+          if (value instanceof Error) return `${value.name}: ${value.message}`;
+          try {
+            return JSON.stringify(value);
+          } catch {
+            return Object.prototype.toString.call(value);
+          }
+        }
+
+        function safeClone(value) {
+          if (value === null || typeof value !== 'object') {
+            return value;
+          }
+          try {
+            return JSON.parse(JSON.stringify(value));
+          } catch {
+            return {
+              summary: Object.prototype.toString.call(value),
+              value: value?.toString?.()
+            };
+          }
+        }
+
+        function transmitLog(level, args) {
+          if (!LOGGING_CONFIG.endpoint || typeof fetch !== 'function') {
+            return;
+          }
+          const message = args.map(formatLogValue).join(' ');
+          if (!message.trim()) return;
+          const payload = { level, message };
+          const detailCandidate = args.find((item) => item && typeof item === 'object');
+          if (detailCandidate) {
+            payload.details = safeClone(detailCandidate);
+          }
+          const body = JSON.stringify(payload);
+          if (LOGGING_CONFIG.useBeacon && navigator?.sendBeacon) {
+            try {
+              const blob = new Blob([body], { type: 'application/json' });
+              navigator.sendBeacon(LOGGING_CONFIG.endpoint, blob);
+              return;
+            } catch {
+              // fallback to fetch below
+            }
+          }
+          fetch(LOGGING_CONFIG.endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body,
+            keepalive: true
+          }).catch(() => {});
+        }
+
+        methods.forEach((method) => {
+          console[method] = (...args) => {
+            try {
+              originalConsole[method](...args);
+            } catch {
+              originalConsole.log(...args);
+            }
+            try {
+              transmitLog(method === 'log' ? 'info' : method, args);
+            } catch {
+              // ignore transport errors
+            }
+          };
+        });
+
+        window.AppLogger = {
+          log: (...args) => console.log(...args),
+          warn: (...args) => console.warn(...args),
+          error: (...args) => console.error(...args),
+          info: (...args) => console.info(...args)
+        };
+      }
   </script>
 </body>
 </html>
-      
-
