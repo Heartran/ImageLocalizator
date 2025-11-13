@@ -5,8 +5,20 @@ const cors = require('cors');
 const fs = require('fs');
 const util = require('util');
 
+const fsPromises = fs.promises;
+const OLLAMA_URL = (process.env.OLLAMA_URL || 'http://127.0.0.1:11434').replace(/\/+$/, '');
+let fetchImpl = typeof fetch === 'function' ? fetch.bind(globalThis) : null;
+
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+async function fetchWithPolyfill(url, options) {
+    if (!fetchImpl) {
+        const module = await import('node-fetch');
+        fetchImpl = module.default;
+    }
+    return fetchImpl(url, options);
+}
 
 // Configurazione CORS
 app.use(cors());
@@ -101,6 +113,88 @@ app.post('/api/save-coordinates', (req, res) => {
     }
 });
 
+app.get('/api/ollama/models', async (req, res) => {
+    try {
+        const response = await fetchWithPolyfill(`${OLLAMA_URL}/api/tags`);
+        if (!response.ok) {
+            const detail = await response.text();
+            throw new Error(`Status ${response.status}: ${detail.slice(0, 400)}`);
+        }
+        const payload = await response.json();
+        const models = Array.isArray(payload.models)
+            ? payload.models.map((model) => ({
+                name: model.name,
+                modified: model.modified_at,
+                size: model.size,
+                parameterSize: model.details?.parameter_size ?? null,
+                quantization: model.details?.quantization_level ?? null,
+                family: model.details?.family ?? model.model ?? null
+            }))
+            : [];
+        res.json({ success: true, models });
+    } catch (error) {
+        console.error('Errore nel recupero dei modelli Ollama:', error);
+        res.status(502).json({
+            success: false,
+            error: 'Impossibile recuperare i modelli disponibili da Ollama',
+            details: error.message
+        });
+    }
+});
+
+app.post('/api/ollama/autolocate', async (req, res) => {
+    try {
+        const { model, filename, existingPoints = [] } = req.body || {};
+        if (!model) {
+            return res.status(400).json({ success: false, error: 'Specificare il modello Ollama da utilizzare.' });
+        }
+        if (!filename) {
+            return res.status(400).json({ success: false, error: 'Nessuna immagine associata alla richiesta.' });
+        }
+        const safeFilename = path.basename(filename);
+        const absolutePath = path.join(__dirname, 'uploads', safeFilename);
+        if (!fs.existsSync(absolutePath)) {
+            return res.status(404).json({ success: false, error: 'Immagine non trovata sul server.' });
+        }
+        const buffer = await fsPromises.readFile(absolutePath);
+        const prompt = buildAutoLocatePrompt(existingPoints);
+        const response = await fetchWithPolyfill(`${OLLAMA_URL}/api/generate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model,
+                prompt,
+                images: [buffer.toString('base64')],
+                stream: false,
+                options: {
+                    temperature: 0.15
+                }
+            })
+        });
+        if (!response.ok) {
+            const detail = await response.text();
+            throw new Error(`Richiesta a Ollama fallita (${response.status}): ${detail.slice(0, 400)}`);
+        }
+        const payload = await response.json();
+        const rawText = (payload.response || '').trim();
+        const parsed = extractJsonFromText(rawText);
+        res.json({
+            success: true,
+            suggestions: Array.isArray(parsed?.mapPoints) ? parsed.mapPoints : [],
+            pose: parsed?.estimatedPose || null,
+            analysis: parsed?.analysis || parsed?.reasoning || rawText,
+            raw: rawText
+        });
+    } catch (error) {
+        console.error('Errore durante la localizzazione via Ollama:', error);
+        res.status(502).json({
+            success: false,
+            error: 'Impossibile completare la localizzazione tramite Ollama',
+            details: error.message
+        });
+    }
+});
+
 app.post('/api/log', (req, res) => {
     try {
         const { level = 'info', message = '', details = null } = req.body || {};
@@ -118,6 +212,74 @@ app.post('/api/log', (req, res) => {
         res.status(500).json({ success: false });
     }
 });
+
+function buildAutoLocatePrompt(existingPoints = []) {
+    const intro = [
+        'Sei un assistente di geolocalizzazione che analizza immagini urbane e deve proporre corrispondenze su OpenStreetMap.',
+        'Per ogni punto importante individua latitudine, longitudine e un\'altitudine stimata (in metri).',
+        'Utilizza i punti immagine già noti (coordinate normalizzate 0-1) per capire dove posizionare i marker.',
+        'Rispondi SOLO con JSON valido.'
+    ].join(' ');
+    const formattedPoints = formatExistingPoints(existingPoints);
+    const schema = [
+        '{',
+        '  "mapPoints": [',
+        '    {',
+        '      "description": "breve testo",',
+        '      "confidence": 0.0-1.0,',
+        '      "imagePoint": { "xNorm": numero, "yNorm": numero },',
+        '      "mapPoint": { "lat": numero, "lng": numero, "altitude": numero opzionale }',
+        '    }',
+        '  ],',
+        '  "estimatedPose": { "lat": numero, "lng": numero, "altitude": numero, "heading": numero, "tilt": numero },',
+        '  "analysis": "massimo due frasi che riassumono il ragionamento"',
+        '}'
+    ].join('\n');
+    return `${intro}\n${formattedPoints}\nFornisci almeno tre punti se possibile e compila sempre i campi numerici.\n${schema}`;
+}
+
+function formatExistingPoints(points = []) {
+    if (!Array.isArray(points) || points.length === 0) {
+        return 'Nessun punto immagine precedente: proponi tu i landmark più distintivi.';
+    }
+    const lines = points.slice(0, 12).map((point, index) => {
+        const label = sanitizePromptText(point.label || `P${point.id ?? index + 1}`);
+        const xNorm = Number.isFinite(point.xNorm) ? point.xNorm : Number(point.normalizedX);
+        const yNorm = Number.isFinite(point.yNorm) ? point.yNorm : Number(point.normalizedY);
+        const coords = [
+            Number.isFinite(xNorm) ? `xNorm=${xNorm.toFixed(4)}` : null,
+            Number.isFinite(yNorm) ? `yNorm=${yNorm.toFixed(4)}` : null
+        ].filter(Boolean).join(', ');
+        const note = point.description ? `, descrizione: ${sanitizePromptText(point.description)}` : '';
+        return `- ${label}${coords ? ` (${coords})` : ''}${note}`;
+    });
+    return `Punti immagine già annotati:\n${lines.join('\n')}`;
+}
+
+function sanitizePromptText(value) {
+    return String(value ?? '')
+        .replace(/[\r\n]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 160);
+}
+
+function extractJsonFromText(text) {
+    if (!text) {
+        return null;
+    }
+    const first = text.indexOf('{');
+    const last = text.lastIndexOf('}');
+    if (first === -1 || last === -1 || last <= first) {
+        return null;
+    }
+    const candidate = text.slice(first, last + 1);
+    try {
+        return JSON.parse(candidate);
+    } catch {
+        return null;
+    }
+}
 
 // Avvia il server
 app.listen(PORT, () => {

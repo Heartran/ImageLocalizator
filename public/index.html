@@ -12,7 +12,7 @@
     <div class="header-bar">
       <div class="title-block">
         <h1>Image Localizator</h1>
-        <p>Carica un'immagine, abbina punti tra foto e una scena 3D Cesium con edifici importabili, poi calcola la posa approssimata della fotocamera con il modello DLT.</p>
+        <p>Carica un'immagine, abbina punti tra foto e una mappa 2D OpenStreetMap gestita da Cesium con edifici importabili, poi calcola la posa approssimata della fotocamera con il modello DLT.</p>
       </div>
       <div class="options-block">
         <button class="options-trigger" id="themeButton" aria-haspopup="true" aria-expanded="false">
@@ -85,18 +85,14 @@
       </div>
 
       <div class="panel map-panel">
-        <h2>Mappa Cesium 3D <span>(OpenStreetMap + modelli)</span></h2>
+        <h2>Mappa OpenStreetMap 2D <span>(base Cesium)</span></h2>
         <div class="map-container">
           <div id="map"></div>
         </div>
-        <div class="notice">Clicca sulla scena Cesium per posizionare il punto corrispondente. I marker sono trascinabili.</div>
+        <div class="notice">Clicca sulla mappa 2D per posizionare il punto corrispondente. I marker sono trascinabili.</div>
         <div class="controls-row">
           <button id="zoomIn">Zoom +</button>
           <button id="zoomOut">Zoom -</button>
-          <button id="tiltUp">Tilt +</button>
-          <button id="tiltDown">Tilt -</button>
-          <button id="rotateLeft">Ruota &larr;</button>
-          <button id="rotateRight">Ruota &rarr;</button>
           <button id="resetView">Reset vista</button>
         </div>
         <div class="model-panel">
@@ -125,6 +121,24 @@
           </form>
           <div id="modelList" class="model-list" data-empty="true" data-empty-message="Nessun modello caricato."></div>
         </div>
+      </div>
+
+      <div class="panel ai-panel">
+        <h2>Assistente IA Ollama</h2>
+        <p class="ai-intro">Seleziona un modello Ollama locale e lascia che l'IA proponga automaticamente i punti corrispondenti sulla mappa 2D e una posa stimata.</p>
+        <div class="ai-controls">
+          <label class="ai-field">
+            <span>Modello</span>
+            <select id="aiModelSelect">
+              <option value="" selected>Caricamento...</option>
+            </select>
+          </label>
+          <button type="button" id="aiRefreshModels">Aggiorna elenco</button>
+        </div>
+        <button type="button" class="btn-primary" id="aiAutoButton">Auto-localizza con IA</button>
+        <p class="ai-status" id="aiStatus" hidden></p>
+        <pre id="aiReasoning" class="ai-reasoning" hidden></pre>
+        <p class="ai-hint">Suggerimento: i modelli multimodali (es. <code>llava</code> o <code>llama3.2-vision</code>) funzionano meglio con immagini.</p>
       </div>
     </section>
 
@@ -171,6 +185,7 @@
         endpoint: '/api/log',
         useBeacon: true
       };
+      window.LOGGING_CONFIG = LOGGING_CONFIG;
       const THEME_VARIABLES = [
         { key: '--bg', label: 'Sfondo principale', defaultValue: '#050c1e' },
         { key: '--panel', label: 'Pannelli', defaultValue: '#111c3a' },
@@ -248,7 +263,10 @@
           overlay: null,
           ctx: null,
           naturalWidth: 0,
-          naturalHeight: 0
+          naturalHeight: 0,
+          localUrl: null,
+          uploadInfo: null,
+          uploadToken: 0
         },
         map: {
           viewer: null,
@@ -256,7 +274,7 @@
           markers: new Map(),
           dragging: null,
           defaultView: { lat: 48.85837, lng: 2.29448, height: 550 },
-          view: { pitch: -35, heading: 0 }
+          view: { pitch: -90, heading: 0 }
         },
         models: {
           entries: new Map(),
@@ -268,6 +286,12 @@
         },
         config: {
           storageAvailable: false
+        },
+        ai: {
+          models: [],
+          selectedModel: '',
+          loadingModels: false,
+          busy: false
         }
       };
       const dom = {};
@@ -318,6 +342,14 @@
         dom.modelScale = document.getElementById('modelScale');
         dom.modelHeading = document.getElementById('modelHeading');
         dom.clearModels = document.getElementById('clearModels');
+        dom.aiModel = document.getElementById('aiModelSelect');
+        dom.aiRefreshModels = document.getElementById('aiRefreshModels');
+        dom.aiAutoButton = document.getElementById('aiAutoButton');
+        if (dom.aiAutoButton) {
+          dom.aiAutoButton.dataset.label = dom.aiAutoButton.textContent || 'Auto-localizza con IA';
+        }
+        dom.aiStatus = document.getElementById('aiStatus');
+        dom.aiReasoning = document.getElementById('aiReasoning');
       }
       function safeAddEventListener(element, eventName, handler) {
         if (element && typeof element.addEventListener === 'function') {
@@ -346,11 +378,13 @@
         safeAddEventListener(dom.solve, 'click', computePose);
         safeAddEventListener(dom.zoomIn, 'click', () => adjustZoom(1));
         safeAddEventListener(dom.zoomOut, 'click', () => adjustZoom(-1));
-        safeAddEventListener(dom.tiltUp, 'click', () => adjustTilt(5));
-        safeAddEventListener(dom.tiltDown, 'click', () => adjustTilt(-5));
-        safeAddEventListener(dom.rotateLeft, 'click', () => adjustRotation(-10));
-        safeAddEventListener(dom.rotateRight, 'click', () => adjustRotation(10));
         safeAddEventListener(dom.resetView, 'click', resetView);
+        safeAddEventListener(dom.aiRefreshModels, 'click', (event) => {
+          event.preventDefault();
+          loadOllamaModels(true);
+        });
+        safeAddEventListener(dom.aiModel, 'change', handleModelChange);
+        safeAddEventListener(dom.aiAutoButton, 'click', handleAutoLocate);
         window.addEventListener('resize', syncOverlaySize);
         if (state.image.element) {
           state.image.element.addEventListener('load', () => {
@@ -364,6 +398,7 @@
           });
         }
         initMap();
+        loadOllamaModels();
       }
       function initializeStorage() {
         try {
@@ -388,6 +423,8 @@
         state.map.viewer = new Cesium.Viewer('map', {
           imageryProvider,
           terrainProvider: new Cesium.EllipsoidTerrainProvider(),
+          sceneMode: Cesium.SceneMode.SCENE2D,
+          mapProjection: new Cesium.WebMercatorProjection(),
           baseLayerPicker: false,
           geocoder: false,
           timeline: false,
@@ -397,20 +434,26 @@
           homeButton: false,
           fullscreenButton: false,
           selectionIndicator: false,
-          infoBox: false
+          infoBox: false,
+          skyAtmosphere: false,
+          skyBox: false,
+          shadows: false
         });
         const viewer = state.map.viewer;
+        viewer.scene.morphTo2D(0);
         viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString('#050c1e');
-        viewer.scene.globe.enableLighting = true;
-        viewer.scene.skyBox = null;
-        viewer.scene.skyAtmosphere = null;
-        viewer.scene.globe.depthTestAgainstTerrain = true;
-        viewer.scene.screenSpaceCameraController.minimumZoomDistance = 20;
-        viewer.scene.screenSpaceCameraController.maximumZoomDistance = 3000000;
+        viewer.scene.globe.enableLighting = false;
+        viewer.scene.globe.depthTestAgainstTerrain = false;
+        viewer.scene.screenSpaceCameraController.enableTilt = false;
+        viewer.scene.screenSpaceCameraController.enableLook = false;
+        viewer.scene.screenSpaceCameraController.enableRotate = false;
+        viewer.scene.screenSpaceCameraController.minimumZoomDistance = 10;
+        viewer.scene.screenSpaceCameraController.maximumZoomDistance = 500000;
+        viewer.camera.constrainedAxis = Cesium.Cartesian3.UNIT_Z;
         setInitialCameraView();
         setupCameraSync();
         setupSceneInteractions();
-        pushStatus('Scena Cesium pronta. Clicca sulla foto, poi sulla mappa.', false);
+        pushStatus('Mappa OSM 2D pronta. Clicca sulla foto, poi sulla mappa.', false);
       }
 
       function setInitialCameraView() {
@@ -490,8 +533,6 @@
       function toggleCameraControls(isEnabled) {
         const controller = state.map.viewer?.scene?.screenSpaceCameraController;
         if (!controller) return;
-        controller.enableRotate = isEnabled;
-        controller.enableTilt = isEnabled;
         controller.enableZoom = isEnabled;
         controller.enablePan = isEnabled;
       }
@@ -536,12 +577,61 @@
         }
         updateTable();
       }
-      function handleImageSelection(event) {
+      async function handleImageSelection(event) {
         const file = event.target.files?.[0];
         if (!file) return;
-        state.image.element.src = URL.createObjectURL(file);
+        if (state.image.localUrl) {
+          URL.revokeObjectURL(state.image.localUrl);
+        }
+        state.image.localUrl = URL.createObjectURL(file);
+        state.image.element.src = state.image.localUrl;
+        state.image.uploadInfo = null;
+        const uploadToken = Date.now();
+        state.image.uploadToken = uploadToken;
         clearPoints(true);
         dom.resultsCard.style.display = 'none';
+        if (dom.aiReasoning) {
+          dom.aiReasoning.textContent = '';
+          dom.aiReasoning.hidden = true;
+        }
+        setAiStatus('Caricamento immagine sul server...', false);
+        try {
+          const uploadInfo = await uploadImageToServer(file);
+          if (state.image.uploadToken !== uploadToken) {
+            return;
+          }
+          state.image.uploadInfo = uploadInfo;
+          setAiStatus('Immagine pronta per l\'analisi IA.', false);
+        } catch (error) {
+          if (state.image.uploadToken !== uploadToken) {
+            return;
+          }
+          state.image.uploadInfo = null;
+          console.error('Errore di upload immagine', error);
+          setAiStatus(`Errore upload: ${error.message}`, true);
+          pushStatus('Caricamento sul server non riuscito: l\'IA non può analizzare la foto.', true);
+        }
+      }
+      async function uploadImageToServer(file) {
+        const formData = new FormData();
+        formData.append('image', file);
+        const response = await fetch('/api/upload-image', {
+          method: 'POST',
+          body: formData
+        });
+        let payload = {};
+        try {
+          payload = await response.json();
+        } catch {
+          payload = {};
+        }
+        if (!response.ok || !payload.success) {
+          throw new Error(payload.error || 'Upload non riuscito');
+        }
+        return {
+          filename: payload.filename,
+          imageUrl: payload.imageUrl
+        };
       }
       function handleImageClick(event) {
         if (!state.image.naturalWidth) return;
@@ -571,7 +661,7 @@
           return;
         }
         if (!state.map.viewer) {
-          pushStatus('La scena Cesium non è pronta.', true);
+          pushStatus('La mappa OSM non è pronta.', true);
           return;
         }
         if (entry.marker) {
@@ -591,6 +681,260 @@
         updateTable();
         drawOverlay();
         pushStatus(`Punto #${entry.id} collegato.`, false);
+      }
+
+      async function handleAutoLocate(event) {
+        event?.preventDefault?.();
+        if (state.ai.busy) {
+          return;
+        }
+        if (!state.image.uploadInfo?.filename) {
+          setAiStatus('Carica un\'immagine e attendi il caricamento prima di usare l\'IA.', true);
+          pushStatus('Carica un\'immagine per l\'analisi IA.', true);
+          return;
+        }
+        if (!state.ai.selectedModel) {
+          pushStatus('Seleziona un modello Ollama prima di procedere.', true);
+          dom.aiModel?.focus();
+          return;
+        }
+        if (!state.image.naturalWidth || !state.image.naturalHeight) {
+          pushStatus('Attendi che l\'immagine sia completamente caricata.', true);
+          return;
+        }
+        setAiBusy(true);
+        setAiStatus('Analisi IA in corso...', false);
+        try {
+          const payload = {
+            model: state.ai.selectedModel,
+            filename: state.image.uploadInfo.filename,
+            existingPoints: state.correspondences
+              .filter((entry) => entry.imagePoint)
+              .map((entry) => ({
+                id: entry.id,
+                label: `P${entry.id}`,
+                xNorm: entry.imagePoint.x / state.image.naturalWidth,
+                yNorm: entry.imagePoint.y / state.image.naturalHeight,
+                description: `pixel (${entry.imagePoint.x.toFixed(0)}, ${entry.imagePoint.y.toFixed(0)})`
+              }))
+          };
+          const response = await fetch('/api/ollama/autolocate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok || !data.success) {
+            throw new Error(data.error || 'Risposta non valida da Ollama');
+          }
+          applyAiSuggestions(data);
+        } catch (error) {
+          console.error('handleAutoLocate', error);
+          setAiStatus(`Errore IA: ${error.message}`, true);
+          pushStatus('Assistente IA: nessun risultato disponibile.', true);
+        } finally {
+          setAiBusy(false);
+        }
+      }
+
+      function applyAiSuggestions(data) {
+        const suggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
+        const added = [];
+        suggestions.forEach((suggestion) => {
+          const normalized = normalizeAiSuggestion(suggestion);
+          if (!normalized) {
+            return;
+          }
+          const entry = {
+            id: state.nextId++,
+            imagePoint: normalized.imagePoint,
+            mapPoint: {
+              lat: normalized.lat,
+              lng: normalized.lng,
+              altitude: normalized.altitude,
+              ecef: latLngAltToECEF(normalized.lat, normalized.lng, normalized.altitude)
+            },
+            marker: null
+          };
+          entry.marker = createMarkerEntity(entry);
+          state.map.markers.set(entry.id, entry.marker);
+          state.correspondences.push(entry);
+          added.push(entry);
+        });
+        if (dom.aiReasoning) {
+          const reasoning = (data.analysis || data.raw || '').trim();
+          dom.aiReasoning.textContent = reasoning;
+          dom.aiReasoning.hidden = !reasoning;
+        }
+        if (!added.length) {
+          setAiStatus('IA: nessun punto valido restituito.', true);
+          return;
+        }
+        state.pending = null;
+        updateTable();
+        drawOverlay();
+        setAiStatus(`IA: aggiunti ${added.length} punti.`, false);
+        pushStatus(`IA: aggiunti ${added.length} nuovi punti sulla mappa.`, false);
+        if (data.pose) {
+          applyAiPose(data.pose);
+        }
+      }
+
+      function normalizeAiSuggestion(suggestion) {
+        if (!suggestion) {
+          return null;
+        }
+        const location = suggestion.mapPoint || suggestion.location || suggestion;
+        const lat = Number(location.lat ?? location.latitude);
+        const lng = Number(location.lng ?? location.lon ?? location.longitude);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+          return null;
+        }
+        const altitude = Number(location.altitude ?? location.alt ?? 0) || 0;
+        const imageCandidate = suggestion.imagePoint || suggestion.image || null;
+        const fallback = state.image.naturalWidth && state.image.naturalHeight
+          ? convertNormalizedToPixels(0.5, 0.5)
+          : null;
+        const imagePoint = convertNormalizedToPixels(
+          Number(imageCandidate?.xNorm ?? imageCandidate?.x),
+          Number(imageCandidate?.yNorm ?? imageCandidate?.y)
+        ) || fallback;
+        return {
+          lat,
+          lng,
+          altitude,
+          imagePoint
+        };
+      }
+
+      function convertNormalizedToPixels(xNorm, yNorm) {
+        if (!state.image.naturalWidth || !state.image.naturalHeight) {
+          return null;
+        }
+        const clamp = (value) => {
+          if (!Number.isFinite(value)) return 0.5;
+          return Math.min(1, Math.max(0, value));
+        };
+        const safeX = clamp(xNorm);
+        const safeY = clamp(yNorm);
+        return {
+          x: safeX * state.image.naturalWidth,
+          y: safeY * state.image.naturalHeight
+        };
+      }
+
+      function applyAiPose(pose) {
+        if (!dom.resultsCard) {
+          return;
+        }
+        const lat = Number(pose.lat ?? pose.latitude);
+        const lng = Number(pose.lng ?? pose.lon ?? pose.longitude);
+        const altitude = Number(pose.altitude ?? pose.alt);
+        const heading = Number(pose.heading);
+        const tilt = Number(pose.tilt ?? pose.pitch);
+        if (Number.isFinite(lat)) {
+          dom.resultLat.textContent = `${lat.toFixed(6)}°`;
+        }
+        if (Number.isFinite(lng)) {
+          dom.resultLng.textContent = `${lng.toFixed(6)}°`;
+        }
+        if (Number.isFinite(altitude)) {
+          dom.resultAlt.textContent = `${altitude.toFixed(2)} m`;
+        }
+        if (Number.isFinite(heading)) {
+          dom.resultHeading.textContent = `${heading.toFixed(1)}°`;
+        }
+        if (Number.isFinite(tilt)) {
+          dom.resultTilt.textContent = `${tilt.toFixed(1)}°`;
+        }
+        dom.resultReproj.textContent = pose.reprojectionError
+          ? `${Number(pose.reprojectionError).toFixed(2)} px`
+          : 'stima IA';
+        dom.resultsCard.style.display = 'grid';
+      }
+
+      async function loadOllamaModels(force = false) {
+        if (!dom.aiModel || (state.ai.loadingModels && !force)) {
+          return;
+        }
+        state.ai.loadingModels = true;
+        renderModelOptions();
+        try {
+          setAiStatus('Recupero modelli da Ollama...', false);
+          const response = await fetch('/api/ollama/models');
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok || !payload.success) {
+            throw new Error(payload.error || 'Richiesta non valida');
+          }
+          state.ai.models = Array.isArray(payload.models) ? payload.models : [];
+          if (state.ai.models.length) {
+            const currentExists = state.ai.models.some((model) => model.name === state.ai.selectedModel);
+            if (!currentExists) {
+              const preferred = state.ai.models.find((model) => /vision|llava|image/i.test(model.name)) || state.ai.models[0];
+              state.ai.selectedModel = preferred?.name || '';
+            }
+          } else {
+            state.ai.selectedModel = '';
+          }
+          renderModelOptions();
+          const message = state.ai.models.length
+            ? `Modelli trovati: ${state.ai.models.length}`
+            : 'Nessun modello disponibile su Ollama.';
+          setAiStatus(message, !state.ai.models.length);
+        } catch (error) {
+          console.error('loadOllamaModels', error);
+          state.ai.models = [];
+          renderModelOptions();
+          setAiStatus(`Errore modelli: ${error.message}`, true);
+        } finally {
+          state.ai.loadingModels = false;
+        }
+      }
+
+      function renderModelOptions() {
+        if (!dom.aiModel) return;
+        dom.aiModel.innerHTML = '';
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = state.ai.loadingModels ? 'Caricamento...' : 'Seleziona un modello';
+        placeholder.disabled = true;
+        placeholder.selected = !state.ai.selectedModel;
+        dom.aiModel.appendChild(placeholder);
+        state.ai.models.forEach((model) => {
+          const option = document.createElement('option');
+          option.value = model.name;
+          const family = model.family ? ` – ${model.family}` : '';
+          option.textContent = `${model.name}${family}`;
+          dom.aiModel.appendChild(option);
+        });
+        if (state.ai.selectedModel) {
+          dom.aiModel.value = state.ai.selectedModel;
+        }
+      }
+
+      function handleModelChange(event) {
+        state.ai.selectedModel = event.target.value;
+        if (state.ai.selectedModel) {
+          setAiStatus(`Modello selezionato: ${state.ai.selectedModel}`, false);
+        }
+      }
+
+      function setAiStatus(message, isError) {
+        if (!dom.aiStatus) {
+          return;
+        }
+        dom.aiStatus.textContent = message || '';
+        dom.aiStatus.dataset.state = isError ? 'error' : 'info';
+        dom.aiStatus.hidden = !message;
+      }
+
+      function setAiBusy(isBusy) {
+        state.ai.busy = isBusy;
+        if (dom.aiAutoButton) {
+          dom.aiAutoButton.disabled = isBusy;
+          const label = dom.aiAutoButton.dataset.label || 'Auto-localizza con IA';
+          dom.aiAutoButton.textContent = isBusy ? 'Analisi IA in corso...' : label;
+        }
       }
 
       function createMarkerEntity(entry) {
@@ -769,13 +1113,14 @@
       }
 
       function adjustZoom(delta) {
-        const camera = getCamera();
-        if (!camera) return;
-        const amount = Math.max(10, camera.positionCartographic.height * 0.2);
+        const viewer = state.map.viewer;
+        if (!viewer) return;
+        const camera = viewer.camera;
+        const amount = Math.max(5, camera.positionCartographic.height * 0.15);
         if (delta > 0) {
-          camera.moveForward(amount);
+          camera.zoomIn(amount);
         } else {
-          camera.moveBackward(amount);
+          camera.zoomOut(amount);
         }
       }
 
@@ -814,7 +1159,7 @@
         if (!viewer) return;
         const { Cesium } = window;
         const { lat, lng, height } = state.map.defaultView;
-        state.map.view.pitch = -35;
+        state.map.view.pitch = -90;
         state.map.view.heading = 0;
         viewer.camera.flyTo({
           destination: Cesium.Cartesian3.fromDegrees(lng, lat, height),
@@ -1006,7 +1351,7 @@
           return;
         }
         if (!state.map.viewer) {
-          pushStatus('La scena Cesium non è pronta.', true);
+          pushStatus('La mappa OSM non è pronta.', true);
           return;
         }
         const file = dom.modelFile.files[0];
@@ -1270,15 +1615,15 @@
           const c = Minv.mmul(p4);
           const cameraECEF = { x: -c.get(0, 0), y: -c.get(1, 0), z: -c.get(2, 0) };
           const geo = ecefToGeodetic(cameraECEF.x, cameraECEF.y, cameraECEF.z);
-          dom.resultLat.textContent = `${geo.lat.toFixed(6)}?`;
-          dom.resultLng.textContent = `${geo.lng.toFixed(6)}?`;
+          dom.resultLat.textContent = `${geo.lat.toFixed(6)}°`;
+          dom.resultLng.textContent = `${geo.lng.toFixed(6)}°`;
           dom.resultAlt.textContent = `${geo.altitude.toFixed(2)} m`;
           try {
             const { R } = decomposeKR(M, Matrix);
             const forward = cameraForwardVector(R);
             const { heading, tilt } = computeViewAngles(forward, cameraECEF);
-            dom.resultHeading.textContent = `${heading.toFixed(1)}?`;
-            dom.resultTilt.textContent = `${tilt.toFixed(1)}?`;
+            dom.resultHeading.textContent = `${heading.toFixed(1)}°`;
+            dom.resultTilt.textContent = `${tilt.toFixed(1)}°`;
           } catch (orientationError) {
             dom.resultHeading.textContent = 'n/d';
             dom.resultTilt.textContent = 'n/d';
@@ -1506,3 +1851,4 @@
   </script>
 </body>
 </html>
+
