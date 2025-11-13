@@ -1,1 +1,5 @@
+# File ambiente
 .env
+
+#moduli node
+node_modules/
