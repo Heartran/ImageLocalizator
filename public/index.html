@@ -5,14 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Image Localizator</title>
   <link rel="stylesheet" href="styles.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <link rel="stylesheet" href="https://unpkg.com/cesium@1.119.0/Build/Cesium/Widgets/widgets.css" crossorigin="" />
 </head>
 <body>
   <header>
     <div class="header-bar">
       <div class="title-block">
         <h1>Image Localizator</h1>
-        <p>Carica un'immagine, abbina punti tra foto e mappa OpenStreetMap in 3D (OSM Buildings), poi calcola la posa approssimata della fotocamera con il modello DLT.</p>
+        <p>Carica un'immagine, abbina punti tra foto e una scena 3D Cesium con edifici importabili, poi calcola la posa approssimata della fotocamera con il modello DLT.</p>
       </div>
       <div class="options-block">
         <button class="options-trigger" id="themeButton" aria-haspopup="true" aria-expanded="false">
@@ -85,11 +85,11 @@
       </div>
 
       <div class="panel map-panel">
-        <h2>Mappa OpenStreetMap <span>(3D OSM Buildings)</span></h2>
+        <h2>Mappa Cesium 3D <span>(OpenStreetMap + modelli)</span></h2>
         <div class="map-container">
           <div id="map"></div>
         </div>
-        <div class="notice">Clicca sulla mappa per posizionare il punto corrispondente. I marker sono trascinabili.</div>
+        <div class="notice">Clicca sulla scena Cesium per posizionare il punto corrispondente. I marker sono trascinabili.</div>
         <div class="controls-row">
           <button id="zoomIn">Zoom +</button>
           <button id="zoomOut">Zoom -</button>
@@ -98,6 +98,32 @@
           <button id="rotateLeft">Ruota &larr;</button>
           <button id="rotateRight">Ruota &rarr;</button>
           <button id="resetView">Reset vista</button>
+        </div>
+        <div class="model-panel">
+          <h3>Modelli 3D personalizzati</h3>
+          <p>Importa file GLB/GLTF e posizionali sulla scena per sostituire gli edifici generici (es. modello dettagliato della Torre Eiffel).</p>
+          <form id="modelForm" class="model-form">
+            <div class="model-field">
+              <label for="modelName">Nome modello</label>
+              <input type="text" id="modelName" placeholder="Es. Torre Eiffel fotogrammetria" maxlength="64" required />
+            </div>
+            <div class="model-field">
+              <label for="modelFile">File (.glb / .gltf)</label>
+              <input type="file" id="modelFile" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" required />
+            </div>
+            <div class="model-grid">
+              <label>Latitudine<input type="number" id="modelLat" step="0.000001" required value="48.85837" /></label>
+              <label>Longitudine<input type="number" id="modelLng" step="0.000001" required value="2.29448" /></label>
+              <label>Altitudine (m)<input type="number" id="modelAlt" step="0.1" value="35" /></label>
+              <label>Scala<input type="number" id="modelScale" step="0.1" value="1" min="0.01" /></label>
+              <label>Heading<input type="number" id="modelHeading" step="1" value="0" /></label>
+            </div>
+            <div class="theme-form-actions">
+              <button type="submit" class="btn-primary">Carica modello</button>
+              <button type="button" id="clearModels">Rimuovi tutti</button>
+            </div>
+          </form>
+          <div id="modelList" class="model-list" data-empty="true" data-empty-message="Nessun modello caricato."></div>
         </div>
       </div>
     </section>
@@ -132,8 +158,10 @@
     </section>
   </main>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="" defer></script>
-  <script src="https://cdn.jsdelivr.net/npm/osmbuildings@latest/dist/OSMBuildings-Leaflet.js" crossorigin="" defer></script>
+  <script>
+    window.CESIUM_BASE_URL = 'https://unpkg.com/cesium@1.119.0/Build/Cesium/';
+  </script>
+  <script src="https://unpkg.com/cesium@1.119.0/Build/Cesium/Cesium.js" crossorigin="" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/ml-matrix@6.10.4/matrix.umd.js" defer></script>
   <script defer>
     const ImageLocalizatorApp = (() => {
@@ -218,11 +246,16 @@
           naturalHeight: 0
         },
         map: {
-          instance: null,
-          markers: null,
-          osmb: null,
-          defaultView: { center: [48.85837, 2.29448], zoom: 18 },
-          view: { tilt: 45, rotation: 0 }
+          viewer: null,
+          handler: null,
+          markers: new Map(),
+          dragging: null,
+          defaultView: { lat: 48.85837, lng: 2.29448, height: 550 },
+          view: { pitch: -35, heading: 0 }
+        },
+        models: {
+          entries: new Map(),
+          nextId: 1
         },
         theme: {
           active: 'aurora',
@@ -270,6 +303,16 @@
         dom.customThemeFields = document.getElementById('customThemeFields');
         dom.customThemeName = document.getElementById('customThemeName');
         dom.clearCustomThemes = document.getElementById('clearCustomThemes');
+        dom.modelForm = document.getElementById('modelForm');
+        dom.modelList = document.getElementById('modelList');
+        dom.modelName = document.getElementById('modelName');
+        dom.modelFile = document.getElementById('modelFile');
+        dom.modelLat = document.getElementById('modelLat');
+        dom.modelLng = document.getElementById('modelLng');
+        dom.modelAlt = document.getElementById('modelAlt');
+        dom.modelScale = document.getElementById('modelScale');
+        dom.modelHeading = document.getElementById('modelHeading');
+        dom.clearModels = document.getElementById('clearModels');
       }
       function safeAddEventListener(element, eventName, handler) {
         if (element && typeof element.addEventListener === 'function') {
@@ -277,13 +320,14 @@
         }
       }
       function init() {
-        if (!window.mlMatrix || !window.L) {
+        if (!window.mlMatrix || !window.Cesium) {
           alert('Librerie necessarie non disponibili.');
           return;
         }
         cacheDom();
         initializeStorage();
         initializeThemeManager();
+        initializeModelManager();
         state.image.element = dom.photo;
         state.image.overlay = dom.overlay;
         state.image.ctx = dom.overlay.getContext('2d');
@@ -326,24 +370,165 @@
         }
       }
       function initMap() {
-        state.map.instance = L.map('map', { zoomControl: false })
-          .setView(state.map.defaultView.center, state.map.defaultView.zoom);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          maxZoom: 20,
-          attribution: '&copy; OpenStreetMap contributors'
-        }).addTo(state.map.instance);
-        L.control.zoom({ position: 'bottomright' }).addTo(state.map.instance);
-        state.map.markers = L.layerGroup().addTo(state.map.instance);
-        if (window.OSMBuildings) {
-          state.map.osmb = new OSMBuildings(state.map.instance);
-          state.map.osmb.setTilt(state.map.view.tilt);
-          state.map.osmb.setRotation(state.map.view.rotation);
-          state.map.osmb.load();
-        }
-        state.map.instance.on('click', (event) => {
-          if (event.latlng) handleMapClick(event.latlng);
+        const { Cesium } = window;
+        const imageryProvider = new Cesium.UrlTemplateImageryProvider({
+          url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          credit: '© OpenStreetMap contributors'
         });
-        pushStatus('Mappa OSM pronta. Clicca sulla foto, poi sulla mappa.', false);
+        if (state.map.viewer) {
+          state.map.viewer.destroy();
+        }
+        state.map.markers = new Map();
+        state.map.viewer = new Cesium.Viewer('map', {
+          imageryProvider,
+          terrainProvider: new Cesium.EllipsoidTerrainProvider(),
+          baseLayerPicker: false,
+          geocoder: false,
+          timeline: false,
+          animation: false,
+          sceneModePicker: false,
+          navigationHelpButton: false,
+          homeButton: false,
+          fullscreenButton: false,
+          selectionIndicator: false,
+          infoBox: false
+        });
+        const viewer = state.map.viewer;
+        viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString('#050c1e');
+        viewer.scene.globe.enableLighting = true;
+        viewer.scene.skyBox = null;
+        viewer.scene.skyAtmosphere = null;
+        viewer.scene.globe.depthTestAgainstTerrain = true;
+        viewer.scene.screenSpaceCameraController.minimumZoomDistance = 20;
+        viewer.scene.screenSpaceCameraController.maximumZoomDistance = 3000000;
+        setInitialCameraView();
+        setupCameraSync();
+        setupSceneInteractions();
+        pushStatus('Scena Cesium pronta. Clicca sulla foto, poi sulla mappa.', false);
+      }
+
+      function setInitialCameraView() {
+        const { Cesium } = window;
+        const viewer = state.map.viewer;
+        if (!viewer) return;
+        const { lat, lng, height } = state.map.defaultView;
+        viewer.camera.setView({
+          destination: Cesium.Cartesian3.fromDegrees(lng, lat, height),
+          orientation: {
+            heading: Cesium.Math.toRadians(state.map.view.heading),
+            pitch: Cesium.Math.toRadians(state.map.view.pitch),
+            roll: 0
+          }
+        });
+      }
+
+      function setupCameraSync() {
+        const { Cesium } = window;
+        const viewer = state.map.viewer;
+        if (!viewer) return;
+        viewer.camera.changed.addEventListener(() => {
+          state.map.view.pitch = Cesium.Math.toDegrees(viewer.camera.pitch);
+          state.map.view.heading = (Cesium.Math.toDegrees(viewer.camera.heading) + 360) % 360;
+        });
+      }
+
+      function setupSceneInteractions() {
+        const { Cesium } = window;
+        const viewer = state.map.viewer;
+        if (!viewer) return;
+        if (state.map.handler) {
+          state.map.handler.destroy();
+        }
+        state.map.dragging = null;
+        const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+        state.map.handler = handler;
+        handler.setInputAction((movement) => {
+          const pick = pickCartographicFromScreenPosition(movement.position);
+          if (!pick.cartographic) return;
+          const markerId = pick.pickedEntity?.properties?.markerId?.getValue?.();
+          if (markerId) {
+            return;
+          }
+          const lat = Cesium.Math.toDegrees(pick.cartographic.latitude);
+          const lng = Cesium.Math.toDegrees(pick.cartographic.longitude);
+          const height = pick.cartographic.height || 0;
+          handleMapClick({ lat, lng, height });
+        }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+        handler.setInputAction((movement) => {
+          const pick = pickCartographicFromScreenPosition(movement.position);
+          const markerId =
+            pick.pickedEntity?.properties?.markerId?.getValue?.() ?? pick.pickedEntity?.markerId ?? null;
+          if (!markerId) {
+            return;
+          }
+          state.map.dragging = { id: Number(markerId) };
+          toggleCameraControls(false);
+        }, Cesium.ScreenSpaceEventType.LEFT_DOWN);
+        handler.setInputAction((movement) => {
+          if (!state.map.dragging) return;
+          const pick = pickCartographicFromScreenPosition(movement.endPosition);
+          if (!pick.cartographic) return;
+          const lat = Cesium.Math.toDegrees(pick.cartographic.latitude);
+          const lng = Cesium.Math.toDegrees(pick.cartographic.longitude);
+          updateMarkerPosition(state.map.dragging.id, lat, lng, pick.cartographic.height || 0);
+        }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+        const stopDragging = () => {
+          if (!state.map.dragging) return;
+          state.map.dragging = null;
+          toggleCameraControls(true);
+        };
+        handler.setInputAction(stopDragging, Cesium.ScreenSpaceEventType.LEFT_UP);
+        handler.setInputAction(stopDragging, Cesium.ScreenSpaceEventType.MOUSE_UP);
+      }
+
+      function toggleCameraControls(isEnabled) {
+        const controller = state.map.viewer?.scene?.screenSpaceCameraController;
+        if (!controller) return;
+        controller.enableRotate = isEnabled;
+        controller.enableTilt = isEnabled;
+        controller.enableZoom = isEnabled;
+        controller.enablePan = isEnabled;
+      }
+
+      function pickCartographicFromScreenPosition(position) {
+        const { Cesium } = window;
+        const viewer = state.map.viewer;
+        const result = { cartographic: null, pickedEntity: null };
+        if (!viewer || !position) return result;
+        const scene = viewer.scene;
+        result.pickedEntity = scene.pick(position);
+        let cartesian = null;
+        if (scene.pickPositionSupported) {
+          cartesian = scene.pickPosition(position);
+        }
+        if (!cartesian) {
+          cartesian = viewer.camera.pickEllipsoid(position, scene.globe.ellipsoid);
+        }
+        if (!cartesian) {
+          return result;
+        }
+        result.cartographic = Cesium.Cartographic.fromCartesian(cartesian);
+        return result;
+      }
+
+      function updateMarkerPosition(id, lat, lng, sampledHeight) {
+        const entry = state.correspondences.find((item) => item.id === id);
+        if (!entry || !entry.mapPoint) {
+          return;
+        }
+        const altitude = Number.isFinite(entry.mapPoint.altitude)
+          ? entry.mapPoint.altitude
+          : sampledHeight || 0;
+        entry.mapPoint.lat = lat;
+        entry.mapPoint.lng = lng;
+        entry.mapPoint.altitude = altitude;
+        entry.mapPoint.ecef = latLngAltToECEF(lat, lng, altitude);
+        const marker = state.map.markers.get(id);
+        if (marker) {
+          const { Cesium } = window;
+          marker.position = Cesium.Cartesian3.fromDegrees(lng, lat, altitude);
+        }
+        updateTable();
       }
       function handleImageSelection(event) {
         const file = event.target.files?.[0];
@@ -379,34 +564,68 @@
           state.pending = null;
           return;
         }
-        if (entry.marker) {
-          state.map.markers.removeLayer(entry.marker);
+        if (!state.map.viewer) {
+          pushStatus('La scena Cesium non è pronta.', true);
+          return;
         }
-        const altitude = entry.mapPoint?.altitude ?? 0;
+        if (entry.marker) {
+          state.map.viewer.entities.remove(entry.marker);
+          state.map.markers.delete(entry.id);
+        }
+        const altitude = entry.mapPoint?.altitude ?? latlng.height ?? 0;
         entry.mapPoint = {
           lat: latlng.lat,
           lng: latlng.lng,
           altitude,
           ecef: latLngAltToECEF(latlng.lat, latlng.lng, altitude)
         };
-        entry.marker = L.marker(latlng, { draggable: true }).addTo(state.map.markers);
-        entry.marker.bindTooltip(`#${entry.id}`, { permanent: true, direction: 'top', offset: [0, -12] });
-        entry.marker.on('dragend', (event) => {
-          const position = event.target.getLatLng();
-          entry.mapPoint.lat = position.lat;
-          entry.mapPoint.lng = position.lng;
-          entry.mapPoint.ecef = latLngAltToECEF(position.lat, position.lng, entry.mapPoint.altitude ?? 0);
-          updateTable();
-        });
+        entry.marker = createMarkerEntity(entry);
+        state.map.markers.set(entry.id, entry.marker);
         state.pending = null;
         updateTable();
         drawOverlay();
         pushStatus(`Punto #${entry.id} collegato.`, false);
       }
+
+      function createMarkerEntity(entry) {
+        const viewer = state.map.viewer;
+        if (!viewer || !entry.mapPoint) {
+          return null;
+        }
+        const { Cesium } = window;
+        const altitude = entry.mapPoint.altitude ?? 0;
+        const position = Cesium.Cartesian3.fromDegrees(entry.mapPoint.lng, entry.mapPoint.lat, altitude);
+        const pinBuilder = new Cesium.PinBuilder();
+        const markerEntity = viewer.entities.add({
+          position,
+          billboard: {
+            image: pinBuilder.fromColor(Cesium.Color.fromCssColorString('#f97316'), 48),
+            verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+            scale: 0.85
+          },
+          label: {
+            text: `#${entry.id}`,
+            pixelOffset: new Cesium.Cartesian2(0, -48),
+            fillColor: Cesium.Color.WHITE,
+            outlineColor: Cesium.Color.fromCssColorString('#020617'),
+            outlineWidth: 3,
+            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+            verticalOrigin: Cesium.VerticalOrigin.BOTTOM
+          },
+          properties: {
+            markerId: entry.id
+          }
+        });
+        markerEntity.markerId = entry.id;
+        return markerEntity;
+      }
       function clearPoints(skipStatus = false) {
         state.correspondences.forEach((entry) => {
-          if (entry.marker) state.map.markers.removeLayer(entry.marker);
+          if (entry.marker) {
+            state.map.viewer?.entities.remove(entry.marker);
+          }
         });
+        state.map.markers?.clear();
         state.correspondences = [];
         state.pending = null;
         state.nextId = 1;
@@ -512,6 +731,11 @@
         if (entry && entry.mapPoint) {
           entry.mapPoint.altitude = value;
           entry.mapPoint.ecef = latLngAltToECEF(entry.mapPoint.lat, entry.mapPoint.lng, value);
+          const marker = state.map.markers.get(id);
+          if (marker) {
+            const { Cesium } = window;
+            marker.position = Cesium.Cartesian3.fromDegrees(entry.mapPoint.lng, entry.mapPoint.lat, value);
+          }
         }
       }
       function removeCorrespondence(id) {
@@ -519,7 +743,8 @@
         if (index === -1) return;
         const [removed] = state.correspondences.splice(index, 1);
         if (removed?.marker) {
-          state.map.markers.removeLayer(removed.marker);
+          state.map.viewer?.entities.remove(removed.marker);
+          state.map.markers?.delete(removed.id);
         }
         if (state.pending?.id === id) {
           state.pending = null;
@@ -533,32 +758,67 @@
         dom.statusBanner.style.borderColor = isError ? 'rgba(244,63,94,0.4)' : 'rgba(56,189,248,0.4)';
         dom.statusMessage.textContent = message;
       }
+      function getCamera() {
+        return state.map.viewer?.camera ?? null;
+      }
+
       function adjustZoom(delta) {
-        if (!state.map.instance) return;
-        state.map.instance.setZoom(state.map.instance.getZoom() + delta);
+        const camera = getCamera();
+        if (!camera) return;
+        const amount = Math.max(10, camera.positionCartographic.height * 0.2);
+        if (delta > 0) {
+          camera.moveForward(amount);
+        } else {
+          camera.moveBackward(amount);
+        }
       }
 
       function adjustTilt(delta) {
-        if (!state.map.osmb) return;
-        state.map.view.tilt = Math.max(0, Math.min(60, state.map.view.tilt + delta));
-        state.map.osmb.setTilt(state.map.view.tilt);
+        const camera = getCamera();
+        if (!camera) return;
+        state.map.view.pitch = Math.min(-5, Math.max(-80, state.map.view.pitch + delta));
+        const { Cesium } = window;
+        camera.setView({
+          destination: camera.position,
+          orientation: {
+            heading: Cesium.Math.toRadians(state.map.view.heading),
+            pitch: Cesium.Math.toRadians(state.map.view.pitch),
+            roll: 0
+          }
+        });
       }
 
       function adjustRotation(delta) {
-        if (!state.map.osmb) return;
-        state.map.view.rotation = (state.map.view.rotation + delta + 360) % 360;
-        state.map.osmb.setRotation(state.map.view.rotation);
+        const camera = getCamera();
+        if (!camera) return;
+        state.map.view.heading = (state.map.view.heading + delta + 360) % 360;
+        const { Cesium } = window;
+        camera.setView({
+          destination: camera.position,
+          orientation: {
+            heading: Cesium.Math.toRadians(state.map.view.heading),
+            pitch: Cesium.Math.toRadians(state.map.view.pitch),
+            roll: 0
+          }
+        });
       }
 
       function resetView() {
-        if (!state.map.instance) return;
-        state.map.instance.setView(state.map.defaultView.center, state.map.defaultView.zoom);
-        if (state.map.osmb) {
-          state.map.view.tilt = 45;
-          state.map.view.rotation = 0;
-          state.map.osmb.setTilt(state.map.view.tilt);
-          state.map.osmb.setRotation(state.map.view.rotation);
-        }
+        const viewer = state.map.viewer;
+        if (!viewer) return;
+        const { Cesium } = window;
+        const { lat, lng, height } = state.map.defaultView;
+        state.map.view.pitch = -35;
+        state.map.view.heading = 0;
+        viewer.camera.flyTo({
+          destination: Cesium.Cartesian3.fromDegrees(lng, lat, height),
+          orientation: {
+            heading: 0,
+            pitch: Cesium.Math.toRadians(state.map.view.pitch),
+            roll: 0
+          },
+          duration: 0.8
+        });
       }
 
       function initializeThemeManager() {
@@ -719,6 +979,160 @@
         state.theme.custom = {};
         saveCustomThemes();
         renderThemeLists();
+      }
+
+      function initializeModelManager() {
+        if (!dom.modelForm || !dom.modelList) {
+          return;
+        }
+        dom.modelLat.value = state.map.defaultView.lat.toFixed(6);
+        dom.modelLng.value = state.map.defaultView.lng.toFixed(6);
+        renderModelList();
+        safeAddEventListener(dom.modelForm, 'submit', handleModelSubmit);
+        safeAddEventListener(dom.modelList, 'click', handleModelListClick);
+        safeAddEventListener(dom.clearModels, 'click', clearAllModels);
+      }
+
+      function handleModelSubmit(event) {
+        event.preventDefault();
+        if (!dom.modelFile?.files?.length) {
+          pushStatus('Seleziona un file GLB/GLTF valido.', true);
+          return;
+        }
+        if (!state.map.viewer) {
+          pushStatus('La scena Cesium non è pronta.', true);
+          return;
+        }
+        const file = dom.modelFile.files[0];
+        const name = dom.modelName.value.trim() || file.name;
+        const lat = Number(dom.modelLat.value);
+        const lng = Number(dom.modelLng.value);
+        const altitude = Number(dom.modelAlt.value) || 0;
+        const scale = Math.max(0.01, Number(dom.modelScale.value) || 1);
+        const heading = Number(dom.modelHeading.value) || 0;
+        if ([lat, lng].some((value) => Number.isNaN(value))) {
+          pushStatus('Inserisci coordinate valide per il modello 3D.', true);
+          return;
+        }
+        const id = state.models.nextId++;
+        const objectUrl = URL.createObjectURL(file);
+        const entry = {
+          id,
+          name,
+          fileName: file.name,
+          lat,
+          lng,
+          altitude,
+          scale,
+          heading,
+          objectUrl,
+          entity: null
+        };
+        entry.entity = addModelToScene(entry);
+        if (!entry.entity) {
+          URL.revokeObjectURL(objectUrl);
+          pushStatus('Impossibile caricare il modello selezionato.', true);
+          return;
+        }
+        state.models.entries.set(id, entry);
+        renderModelList();
+        dom.modelForm.reset();
+        dom.modelLat.value = state.map.defaultView.lat.toFixed(6);
+        dom.modelLng.value = state.map.defaultView.lng.toFixed(6);
+        dom.modelAlt.value = '35';
+        dom.modelScale.value = '1';
+        dom.modelHeading.value = '0';
+        pushStatus(`Modello "${entry.name}" aggiunto alla scena.`, false);
+      }
+
+      function addModelToScene(entry) {
+        if (!state.map.viewer) {
+          return null;
+        }
+        const { Cesium } = window;
+        const position = Cesium.Cartesian3.fromDegrees(entry.lng, entry.lat, entry.altitude || 0);
+        const orientation = Cesium.Transforms.headingPitchRollQuaternion(
+          position,
+          new Cesium.HeadingPitchRoll(Cesium.Math.toRadians(entry.heading || 0), 0, 0)
+        );
+        return state.map.viewer.entities.add({
+          name: entry.name,
+          position,
+          orientation,
+          model: {
+            uri: entry.objectUrl,
+            scale: entry.scale,
+            minimumPixelSize: 64,
+            maximumScale: 10000
+          },
+          properties: {
+            customModelId: entry.id
+          }
+        });
+      }
+
+      function renderModelList() {
+        if (!dom.modelList) {
+          return;
+        }
+        const entries = Array.from(state.models.entries.values());
+        if (!entries.length) {
+          dom.modelList.dataset.empty = 'true';
+          dom.modelList.innerHTML = `<p class="model-empty">${dom.modelList.dataset.emptyMessage || 'Nessun modello caricato.'}</p>`;
+          return;
+        }
+        dom.modelList.dataset.empty = 'false';
+        dom.modelList.innerHTML = '';
+        entries.forEach((entry) => {
+          const item = document.createElement('div');
+          item.className = 'model-list__item';
+          item.innerHTML = `
+            <div>
+              <strong>${entry.name}</strong>
+              <div class="model-meta">Lat ${entry.lat.toFixed(5)} · Lng ${entry.lng.toFixed(5)} · Alt ${entry.altitude?.toFixed(1) ?? 0} m · Scala ${entry.scale}</div>
+            </div>
+            <button type="button" data-model-remove="${entry.id}">Rimuovi</button>
+          `;
+          dom.modelList.appendChild(item);
+        });
+      }
+
+      function handleModelListClick(event) {
+        const button = event.target.closest('[data-model-remove]');
+        if (!button) {
+          return;
+        }
+        removeModel(Number(button.dataset.modelRemove));
+      }
+
+      function removeModel(id, silent = false) {
+        const entry = state.models.entries.get(id);
+        if (!entry) {
+          return;
+        }
+        if (entry.entity) {
+          state.map.viewer?.entities.remove(entry.entity);
+        }
+        if (entry.objectUrl) {
+          URL.revokeObjectURL(entry.objectUrl);
+        }
+        state.models.entries.delete(id);
+        renderModelList();
+        if (!silent) {
+          pushStatus(`Modello "${entry.name}" rimosso.`, false);
+        }
+      }
+
+      function clearAllModels() {
+        if (!state.models.entries.size) {
+          return;
+        }
+        if (!confirm('Vuoi rimuovere tutti i modelli personalizzati?')) {
+          return;
+        }
+        Array.from(state.models.entries.keys()).forEach((id) => removeModel(id, true));
+        renderModelList();
+        pushStatus('Modelli personalizzati rimossi.', false);
       }
 
       function toggleThemePanel() {
@@ -998,3 +1412,5 @@
   </script>
 </body>
 </html>
+      
+
