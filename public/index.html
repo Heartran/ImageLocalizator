@@ -1762,7 +1762,8 @@
     })();
 
       function initializeRemoteConsole() {
-        if (!LOGGING_CONFIG.enabled || typeof window === 'undefined' || window.__REMOTE_CONSOLE_PATCHED__) {
+        const config = window.LOGGING_CONFIG;
+        if (!config?.enabled || typeof window === 'undefined' || window.__REMOTE_CONSOLE_PATCHED__) {
           return;
         }
         window.__REMOTE_CONSOLE_PATCHED__ = true;
@@ -1798,7 +1799,7 @@
         }
 
         function transmitLog(level, args) {
-          if (!LOGGING_CONFIG.endpoint || typeof fetch !== 'function') {
+          if (!config.endpoint || typeof fetch !== 'function') {
             return;
           }
           const message = args.map(formatLogValue).join(' ');
@@ -1809,16 +1810,16 @@
             payload.details = safeClone(detailCandidate);
           }
           const body = JSON.stringify(payload);
-          if (LOGGING_CONFIG.useBeacon && navigator?.sendBeacon) {
+          if (config.useBeacon && navigator?.sendBeacon) {
             try {
               const blob = new Blob([body], { type: 'application/json' });
-              navigator.sendBeacon(LOGGING_CONFIG.endpoint, blob);
+              navigator.sendBeacon(config.endpoint, blob);
               return;
             } catch {
               // fallback to fetch below
             }
           }
-          fetch(LOGGING_CONFIG.endpoint, {
+          fetch(config.endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body,
